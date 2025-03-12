@@ -1,0 +1,37 @@
+- name: Get MongoDB username fact
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: mongodb-nectar-username
+  register: mongodb_nectar_username
+  no_log: true
+
+- name: Set Variable mongodb_nectar_username
+  set_fact:
+    mongodb_nectar_username_fact: "{{ mongodb_nectar_username.secrets[0].secret }}"
+  no_log: true
+
+- name: Get MongoDB password fact
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: mongodb-nectar-password
+  register: mongodb_nectar_password
+  no_log: true
+
+- name: Set Variable mongodb_nectar_password
+  set_fact:
+    mongodb_nectar_password_fact: "{{ mongodb_nectar_password.secrets[0].secret }}"
+  no_log: true
+
+# - name: Get facts for MongoDB private IP
+#   azure_rm_networkinterface_info:
+#     resource_group: "{{ azure_resource_group }}"
+#     name: "{{ mongo_vm_nic }}"
+#   register: mongo_nic
+
+# - name: Set fact for MongoDB private IP
+#   set_fact:
+#     mongo_nic_ip_fact: "{{ mongo_nic.networkinterfaces[0].ip_configurations[0].private_ip_address }}"
+
+# - name: Private ip output
+#   debug:
+#     msg: "{{ mongo_nic_ip_fact }}"

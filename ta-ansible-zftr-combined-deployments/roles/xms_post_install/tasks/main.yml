@@ -1,0 +1,156 @@
+---
+- name: Include vars
+  include_vars: vars.yml
+
+- name: Check for idempotency folder
+  ansible.builtin.stat:
+    path: /home/CXAdmin/idempotency
+  register: idempotency_check
+
+- name: Open Nectar CX tcp Ports
+  iptables_raw:
+    name: allow_tcp_nectarcx
+    rules: '-A INPUT -p tcp -m multiport --dports 22,80,81,443,444,445,1080,2855,5060,5070,10443,12000:12010 -j ACCEPT'
+
+- name: Open Nectar CX udp Ports
+  iptables_raw:
+    name: allow_udp_nectarcx
+    rules: '-A INPUT -p udp -m multiport --dports 161,5060,5070,49152:55151,56000:56999 -j ACCEPT'
+
+- name: Change owner to apache on web files
+  ansible.builtin.file:
+    path: /etc/xms
+    owner: apache
+    group: apache
+    recurse: yes
+    state: directory
+  when: not idempotency_check.stat.exists
+
+- name: Make SMB Folders
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop: "{{ smb_directories }}"
+  when: not idempotency_check.stat.exists
+
+- name: Install Samba Yum modules
+  ansible.builtin.yum:
+    skip_broken: yes
+    name:
+      - samba
+      - samba-client
+
+- name: Start and Enable SMB
+  ansible.builtin.systemd:
+    name: smb.service
+    enabled: yes
+    state: started
+
+- name: Start and Enable NMB
+  ansible.builtin.systemd:
+    name: nmb.service
+    enabled: yes
+    state: started
+
+- name: Create samba share group
+  ansible.builtin.group:
+    name: sambashare
+
+- name: Make Samba folder in home
+  ansible.builtin.file: 
+    path: /home/cxadmin/samba
+    group: sambashare
+    state: directory
+
+- name: Make CXA User folder
+  ansible.builtin.file: 
+    path: /home/cxadmin/samba/cxa
+    mode: '2770'
+    state: directory
+
+- name: Add CXA user
+  ansible.builtin.user:
+    name: cxa
+    group: sambashare
+    home: /home/cxadmin/samba/cxa
+    create_home: no
+    shell: /usr/sbin/nologin
+
+- name: Set CXA as Samba user
+  ansible.builtin.expect:
+    command: smbpasswd -a cxa
+    timeout: null
+    responses:
+      "New SMB password:": "{{ lookup('env','xms_smb_password') }}"
+      "Retype new SMB password:": "{{ lookup('env','xms_smb_password') }}"
+  no_log: true
+  when: not idempotency_check.stat.exists
+
+- name: Enable CXA Samba User
+  ansible.builtin.shell:
+    cmd: smbpasswd -e cxa
+  when: not idempotency_check.stat.exists
+
+- name: Copy SMB Configuration
+  ansible.builtin.copy:
+    src: ./roles/xms_post_install/files/smb.conf
+    dest: /etc/samba/smb.conf
+  when: not idempotency_check.stat.exists
+
+- name: Replace SMB Configuration Parameters
+  ansible.builtin.replace:
+    path: /etc/samba/smb.conf
+    regexp: <HOST_IP>
+    replace: "{{ ansible_default_ipv4.address }}"
+  when: not idempotency_check.stat.exists
+
+- name: Restart SMB
+  ansible.builtin.systemd:
+    name: smb.service
+    enabled: yes
+    state: restarted
+  when: not idempotency_check.stat.exists
+
+- name: Reboot
+  reboot:
+    test_command: uptime
+  when: not idempotency_check.stat.exists
+
+- name: Make idempotency folder
+  ansible.builtin.file: 
+    path: /home/cxadmin/idempotency
+    mode: '2770'
+    state: directory
+
+- name: Make SMB Cleanup and Monitoring Scripts folder
+  ansible.builtin.file: 
+    path: /var/scripts
+    mode: '0755'
+    state: directory
+
+- name: Copy SMB Cleanup and Monitoring Scripts
+  ansible.builtin.copy:
+    src: ./roles/xms_post_install/scripts/
+    dest: /var/scripts/
+    mode: u+rwx
+
+- name: Schedule Media Deletion
+  ansible.builtin.cron:
+    name: "Deleting media recording files older than 4 days"
+    minute: "7"
+    hour: "7"
+    job: "var/scripts/mediaCleanUpScript.sh"
+
+- name: Schedule Disk Space Alert
+  ansible.builtin.cron:
+    name: "Disk Space Alert"
+    minute: "*/15"
+    job: "var/scripts/diskspaceAlert.sh"
+
+- name: Schedule Archive Media Deletion
+  ansible.builtin.cron:
+    name: "Deleting archive media recording files"
+    minute: "30"
+    hour: "9"
+    job: "var/scripts/archiveMediaCleanUpScript.sh"

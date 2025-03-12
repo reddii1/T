@@ -1,0 +1,81 @@
+- name: Add Inboound TCP Firewall Rules
+  community.windows.win_firewall_rule:
+    name: "Nuance-Inbound-TCP-Ports-{{ item }}"
+    localport: "{{ item }}"
+    direction: in
+    action: allow
+    protocol: tcp
+    profiles: domain,private,public
+    enabled: yes
+  with_items:
+    - [22, 80, 81, 443-445, 1080, 2855, 5060, 5070, 12000-12010, 10443, 5160]
+  
+- name: Add Inboud UDP Firewall Rules
+  community.windows.win_firewall_rule:
+    name: "Nuance-Inbound-UDP-Ports-{{ item }}"
+    localport: "{{ item }}"
+    direction: in
+    action: allow
+    protocol: udp
+    profiles: domain,private,public
+    enabled: yes
+  with_items:
+    - [161, 5060, 5070, 49152-55151, 56000-56999, 57344-63343, 5160]
+
+- name: Add Outbound TCP Firewall Rules
+  community.windows.win_firewall_rule:
+    name: "Nuance-Outbound"
+    localport: any
+    direction: out
+    action: allow
+    protocol: any
+    profiles: domain,private,public
+    enabled: yes
+
+- name: Enable 8.3 naming on drives
+  win_regedit:
+    path: HKCU:\SYSTEM\CurrentControlSet\Control\FileSystem
+    name: NtfsDisable8dot3NameCreation
+    data: 0
+    type: dword
+
+- name: Enable Protection policy to install SQL Server 
+  win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Cryptography\Protect\Providers\df9d8cd0-1501-11d1-8c7a-00c04fc297eb
+    name: ProtectionPolicy
+    data: 1
+    type: dword
+
+- name: Create folder for Java
+  ansible.windows.win_file:
+    path: C:\Users\Public\Downloads\Java
+    state: directory
+
+- name: Download JDK 8
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/open_JDK_8/8/OpenJDK8U.msi
+    dest: C:/Users/Public/Downloads/
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Install JDK 8
+  ansible.windows.win_command: msiexec /i C:\Users\Public\Downloads\OpenJDK8U.msi INSTALLLEVEL=1 /quiet
+
+- name: Download Tomcat Package
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/apache-tomcat/8.5.91/apache-tomcat-8.5.91-windows-x64.zip
+    dest: C:/Users/Public/Downloads/
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Unzip Tomcat
+  community.windows.win_unzip:
+    src: C:/Users/Public/Downloads/apache-tomcat-8.5.91-windows-x64.zip
+    dest: C:/Users/Public/Downloads/
+
+- name: Restart 
+  ansible.windows.win_reboot:
+    post_reboot_delay: 60
+
+- name: Ping Nuance 
+  win_ping: 

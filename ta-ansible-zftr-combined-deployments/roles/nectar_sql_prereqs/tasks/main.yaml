@@ -1,0 +1,58 @@
+- name: Download ODBC installation binaries
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/ODBCDriver_17/17/msodbcsql.msi
+    dest: C:\Users\Public\Downloads\msodbcsql.msi
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Download vc_redist
+  ansible.windows.win_get_url:
+    url: https://download.microsoft.com/download/9/3/F/93FCF1E7-E6A4-478B-96E7-D4B285925B00/vc_redist.x64.exe
+    dest: C:\Users\Public\Downloads\
+
+- name: Download SQL cli tools
+  ansible.windows.win_get_url:
+    url: https://download.microsoft.com/download/a/a/4/aa47b3b0-9f67-441d-8b00-e74cd845ea9f/EN/x64/MsSqlCmdLnUtils.msi
+    dest: C:\Users\Public\Downloads\
+
+- name: Download SSMS
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/microsoft-sql-server-management-studio/18.12.1/SSMS-Setup-ENU.exe
+    dest: C:\Users\Public\Downloads
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Install vc_redist
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\vc_redist.x64.exe
+    arguments: '/q /norestart'
+  ignore_errors: true
+
+- name: Install OBDC Driver
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\msodbcsql.msi
+    arguments: 'IACCEPTMSODBCSQLLICENSETERMS=YES'
+
+- name:  Install SQL cli tools
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\MsSqlCmdLnUtils.msi
+    arguments: "/passive IACCEPTMSSQLCMDLNUTILSLICENSETERMS=YES"
+
+- name:  Install SSMS
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\SSMS-Setup-ENU.exe
+    arguments: " /Install /Quiet /Norestart /Logs log.txt"
+
+# - name: Run sqlcmd to execute structure_nectarCXA
+#   ansible.windows.win_command: "sqlcmd -S sql-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-database.database.windows.net -d cx_portal -U {{ sql_admin_username }} -P {{ sql_admin_password }} -i structure_nectarCXA.sql"
+#   args:
+#     chdir: F:\Nectar\CXA\db-scripts\sql-server
+#   no_log: false
+#   run_once: true
+
+# - name: Run sqlcmd to execute data_export_nectarCXA
+#   ansible.windows.win_command: "sqlcmd -S sql-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-database.database.windows.net -d cx_portal -U {{ sql_admin_username }} -P {{ sql_admin_password }} -i data_export_nectarCXA.sql"
+#   args:
+#     chdir: F:\Nectar\CXA\db-scripts\sql-server
+#   no_log: false
+#   run_once: true

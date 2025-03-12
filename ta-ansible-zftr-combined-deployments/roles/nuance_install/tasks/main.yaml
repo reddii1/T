@@ -1,0 +1,100 @@
+- name: Create Nuance folders 
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - C:\Users\Public\Downloads\Nuance
+    - C:\Users\Public\Downloads\Nuance\Log
+    - C:\Nectar\Nuance\CallLogs
+
+- name: Download Nuance Speech Suite 11.0.4
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/nuance-speech-suite/11.0.4/Nuance_Speech_Suite_11.0.4.exe
+    dest: C:\Users\Public\Downloads\Nuance
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Download Nuance Language Pack 
+  ansible.windows.win_get_url:
+    url: "https://gitlab.com/api/v4/projects/27336081/packages/generic/nuance-recognizer-10-language-pack-english-uk/10.0.2/NRec-en-GB-10.0.2-10.2.0.x86_64-windows.zip"
+    dest: C:\Users\Public\Downloads\Nuance
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Unzip Language Pack
+  community.windows.win_unzip:
+    src: C:\Users\Public\Downloads\Nuance\NRec-en-GB-10.0.2-10.2.0.x86_64-windows.zip
+    dest: C:\Users\Public\Downloads\Nuance
+
+- name: Install Nuance
+  ansible.windows.win_command: '"C:\Users\Public\Downloads\Nuance\Nuance_Speech_Suite_11.0.4.exe" /debuglog"C:\Users\Public\Downloads\Nuance\install.log" /silent /log"C:\Users\Public\Downloads\Nuance\Log" TOMCAT_HOME="C:\Users\Public\Downloads\apache-tomcat-8.5.91" JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-8.0.382.5-hotspot" CONNECTORJ="C:\JDBC\6.0\sqljdbc_6.4\enu\mssql-jdbc-6.4.0.jre8.jar" CONNECTORC="C:\Windows\System32\msodbcsql17.dll" MSSQL_INSTANCE=MSSQLSERVER MS_DBTYPE=sqlserver MS_DBSERVICE=sqlserver MS_DBHOST=localhost MS_DBPORT=1433 MS_DBSCHEMA=mserver MS_DBUSER=ms MS_DBPASS=msp SUPPLEMENTSPATH="C:\Users\Public\Downloads\Nuance\NRec-en-GB-10.0.2-10.2.0"'
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+- name: Install IIS Web-Server with sub features and management tools
+  ansible.windows.win_feature:
+    name: Web-Server
+    state: present
+    include_sub_features: true
+    include_management_tools: true
+  register: win_feature
+
+- name: Reboot if installing Web-Server feature requires it
+  ansible.windows.win_reboot:
+  when: win_feature.reboot_required  
+
+- name: Enable directory browsing
+  ansible.windows.win_shell: |
+     C:\windows\system32\inetsrv\appcmd.exe set config "Default Web Site" -section:system.webServer/directoryBrowse /enabled:"True" /showFlags:"Date, Time, Size, Extension"
+
+- name: Create a virtual directory if it does not exist
+  community.windows.win_iis_virtualdirectory:
+    name: Nuance
+    site: "Default Web Site"
+    state: present
+    physical_path: C:\Nectar\Nuance\CallLogs
+
+- name: Edit NSS config for Nectar CallLogs folder
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - C:\Program Files (x86)\Nuance\Speech Server\Server\config\NSSserver.cfg
+  vars:
+    original_contents: 'server.callLog.baseDirectory VXIString $(NUANCE_DATA_DIR)/'
+    new_contents: 'server.callLog.baseDirectory VXIString C:\Nectar\Nuance\CallLogs'
+
+- name: Increase max speech timeout
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - C:\Program Files\Nuance\Recognizer\config\Baseline.xml
+  vars:
+    original_contents: '<value>22000</value>'
+    new_contents: '<value>90000</value>'
+
+- name: Replace IP address entry
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - C:\Program Files (x86)\Nuance\Speech Server\Server\config\NSSserver.cfg
+  vars:
+    original_contents: '#server.mrcp2.sip.transport.interface.0            VXIString     192.168.68.1'
+    new_contents: 'server.mrcp2.sip.transport.interface.0            VXIString     {{ ansible_ip_addresses[0] }}'
+  when: Nuance_installed.state is not defined or Nuance_installed.name is not defined
+
+- name: Replace IP address entry
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - C:\Program Files (x86)\Nuance\Speech Server\Server\config\NSSserver.cfg
+  vars:
+    original_contents: '#server.transport.bindrtptoip            VXIString  '
+    new_contents: 'server.transport.bindrtptoip            VXIString       {{ ansible_ip_addresses[0] }}'
+  when: Nuance_installed.state is not defined or Nuance_installed.name is not defined

@@ -1,0 +1,100 @@
+- name: Download Notepad++ 
+  ansible.windows.win_get_url:
+    url: "https://gitlab.com/api/v4/projects/27336081/packages/generic/notepad++/8.5.2/npp.8.5.2.Installer.x64.exe"
+    dest: "F:/npp.8.5.2.Installer.x64.exe"
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Install Notepad++
+  ansible.windows.win_package:
+    path: F:/npp.8.5.2.Installer.x64.exe
+    state: present
+    arguments: '/S'
+
+- name: Download git for windows installer
+  ansible.windows.win_get_url:
+    url: "https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/Git-2.48.1-64-bit.exe"
+    dest: "F:\\Git-2.42.1-64-bit.exe"
+
+- name: Install Git
+  ansible.windows.win_package:
+    path: "F:\\Git-2.42.1-64-bit.exe"
+    state: present
+    arguments: "/silent /install"
+  
+- name: Download TraceWrangler 
+  ansible.windows.win_get_url:
+    url: "https://gitlab.com/api/v4/projects/27336081/packages/generic/tracewrangler/0.6.8/tracewrangler_x64.zip"
+    dest: "F:/tracewrangler_x64.zip"
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Unzip Tracewragler
+  community.windows.win_unzip:
+    src: F:\tracewrangler_x64.zip
+    dest: F:\
+
+- name: Add Nectar UDP Firewall Rules
+  community.windows.win_firewall_rule:
+    name: "Nectar-CX-UDP-Ports-{{ item }}"
+    localport: "{{ item }}"
+    direction: in
+    action: allow
+    protocol: udp
+    profiles: domain,private,public
+    enabled: yes
+  with_items:
+    - [161, 5060, 5070, 49152-55151, 56000-56999, 57344-63343]
+
+- name: Add Nectar TCP Firewall Rules
+  community.windows.win_firewall_rule:
+    name: "Nectar-CX-TCP-Ports-{{ item }}"
+    localport: "{{ item }}"
+    direction: in
+    action: allow
+    protocol: tcp
+    profiles: domain,private,public
+    enabled: yes
+  with_items:
+    - [ 22, 80, 81, 443-445, 1080, 2855, 5060, 5070, 12000-12010, 10443]
+
+- name: Add Nectar UI Rules
+  community.windows.win_firewall_rule:
+    name: "Nectar-CX"
+    program: F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}\bin\NectarCXA.exe
+    localport: any
+    direction: in
+    action: allow
+    protocol: any
+    profiles: domain,private,public
+    enabled: yes
+
+- name: Add Nectar Email Notifications Firewall Rules
+  community.windows.win_firewall_rule:
+    name: "Nectar-CX-SMTP"
+    localport: "587"
+    direction: out
+    action: allow
+    protocol: tcp
+    profiles: domain,private,public
+    enabled: yes
+
+- name: Add Nectar Web Interactions Inbound Rule
+  community.windows.win_firewall_rule:
+    name: "Nectar-CX-Web-Interactions-Inbound"
+    localport: "4444"
+    direction: in
+    action: allow
+    protocol: tcp
+    profiles: domain,private,public
+    enabled: yes
+
+- name: Add Nectar Web Interactions Outbound Rule
+  community.windows.win_firewall_rule:
+    name: "Nectar-CX-Web-Interactions-Outbound"
+    localport: "4444"
+    direction: out
+    action: allow
+    protocol: tcp
+    profiles: domain,private,public
+    enabled: yes

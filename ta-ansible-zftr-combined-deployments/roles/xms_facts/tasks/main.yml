@@ -1,0 +1,23 @@
+- name: Get Password fact for XMS
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: xms-prereq-cx-admin-password
+  register: xms_cx_admin_password_output
+  no_log: true
+
+- name: Set Password fact for XMS
+  set_fact:
+    xms_cx_admin_password: "{{ xms_cx_admin_password_output.secrets[0].secret }}"
+  no_log: true
+
+- name: Get Password fact for XMS SMB
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: xms-smb-password
+  register: xms_smb_password_output
+  no_log: true
+
+- name: Set Password fact for XMS SMB
+  set_fact:
+    xms_smb_password: "{{ xms_smb_password_output.secrets[0].secret }}"
+  no_log: true

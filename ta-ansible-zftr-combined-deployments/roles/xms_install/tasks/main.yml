@@ -1,0 +1,38 @@
+---
+- name: Check for idempotency folder
+  ansible.builtin.stat:
+    path: /home/CXAdmin/idempotency
+  register: idempotency_check
+
+- name: Check if XMS is already installed
+  ansible.builtin.stat:
+    path: /var/www/xms
+  register: xms_dir
+
+- name: Install XMS
+  ansible.builtin.expect:
+    command: ./xms_install.pl --xms-loglevel DEBUG
+    chdir: /home/CXAdmin/ms
+    timeout: null
+    responses:
+      \[Y\/n\]: "Y"
+      \[Y\/n\/q]: "Y"
+      \[Y\/n\/q]: "Y"
+      \[Y\/n\/q]: "Y"
+      \[Y\/n\/q]: "Y"
+  when: xms_dir.stat.isdir is undefined or not xms_dir.stat.isdir
+
+- name: Create DTMF Directory
+  ansible.builtin.file:
+    state: directory
+    dest: /var/lib/xms/media/en_US/DTMF
+    mode: '0655'
+  when: not idempotency_check.stat.exists
+
+- name: Extract DTMF Tones
+  ansible.builtin.unarchive:
+    # src: "/datadrive/xms_install/DTMF.zip"
+    src: "/opt/xms_install/DTMF.zip"
+    remote_src: yes
+    dest: /var/lib/xms/media/en_US/DTMF
+  when: not idempotency_check.stat.exists

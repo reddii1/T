@@ -1,0 +1,19 @@
+- name: Get VM Username
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-username
+  register: admin_user_output
+  
+- name: Set VM Username fact 
+  set_fact:
+    admin_user: "{{ admin_user_output.secrets[0].secret }}"
+
+- name: Get VM Password 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-password
+  register: admin_pass_output
+
+- name: Set VM password fact
+  set_fact:
+    admin_pass: "{{ admin_pass_output.secrets[0].secret }}"

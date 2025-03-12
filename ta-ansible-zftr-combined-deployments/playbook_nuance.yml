@@ -1,0 +1,24 @@
+---
+- hosts: localhost
+  collections:
+    - azure.azcollection
+
+  roles:
+    - nuance_facts
+
+- hosts: nuance
+  vars:
+    ansible_user: "{{ lookup('env','admin_user') }}"
+    ansible_password: "{{ lookup('env','admin_pass') }}"
+    ansible_connection: winrm
+    ansible_port: 5986
+    ansible_winrm_scheme: https
+    ansible_winrm_transport: certificate
+    ansible_winrm_server_cert_validation: ignore
+    ansible_winrm_cert_pem: ./cert.pem
+    ansible_winrm_cert_key_pem: ./certkey.pem
+  
+  roles:
+    - nuance_sql_prereqs
+    - nuance_win_prereqs
+    - nuance_install

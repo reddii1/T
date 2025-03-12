@@ -1,0 +1,46 @@
+---
+- hosts: localhost
+  collections:
+    - azure.azcollection
+    
+  vars:
+    ta_tags:
+      Function: Digital Channels Shared Channels Experience
+      Persistence: mon-fri,07:00-23:00
+      Application: Next Generation Contact Centre (current PSN-CC service)
+      Role: Test Automation
+      Business-Project: PRJ0046377
+      Project-Cost-Code: '10389352'
+      Environment: "{{ lookup('env','ENVIRONMENT') }}"
+
+  roles:
+    - nectar_backup_test_case_data
+    - create_nectar_vm  
+    - nectar_facts
+
+- hosts: nectar:&radar:&{{ lookup('env','ENVIRONMENT') }}
+  vars:
+    ansible_user: "{{ lookup('env','admin_user') }}"
+    ansible_password: "{{ lookup('env','admin_pass') }}"
+    ansible_connection: winrm
+    ansible_port: 5986
+    ansible_winrm_scheme: https
+    ansible_winrm_transport: certificate
+    ansible_winrm_server_cert_validation: ignore
+    ansible_winrm_cert_pem: ./cert.pem
+    ansible_winrm_cert_key_pem: ./certkey.pem
+    
+  roles:
+    - initialise_disks
+    - nectar_prerequisites
+    - nectar_install
+    - nectar_config
+
+  # tasks: 
+  #   - name: Print var
+  #     ansible.builtin.debug: 
+  #       msg: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+
+
+
+

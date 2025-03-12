@@ -1,0 +1,11 @@
+---
+- name: Ensure F:\ drive exists
+  ansible.windows.win_stat:
+    path: F:\
+  ignore_errors: true
+  changed_when: false
+  register: idempotency_exists
+
+- name: Initialise data drive via Powershell
+  ansible.windows.win_shell: "{{ lookup('file', 'initdisks.ps1') }}"
+  when: idempotency_exists.stat.exists == False

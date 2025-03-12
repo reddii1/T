@@ -1,0 +1,6 @@
+# System Admin Credentials
+saUser: "{{ hostvars['localhost']['admin_user'] }}"
+saPassword: "{{ hostvars['localhost']['admin_pass'] }}"
+# Nuance Management Station Database Default Credentials
+msLogin: ms
+msPassword: msp

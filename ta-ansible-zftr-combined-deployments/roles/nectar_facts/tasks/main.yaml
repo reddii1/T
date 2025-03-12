@@ -1,0 +1,59 @@
+- name: Get facts for Live XMS Private IP 
+  azure_rm_networkinterface_info:
+    resource_group: "rg-uks-devt-dw-ccc-test-automation-project"
+    name: "vm-uks-devt-dw-ccc-t332"
+  register: xms_nic
+
+- name: Set fact for XMS IP address
+  set_fact:
+    xms_ip: "{{ xms_nic.networkinterfaces[0].ip_configurations[0].private_ip_address }}"
+
+- name: Get facts for Live MongoDB private IP
+  azure_rm_networkinterface_info:
+    resource_group: "rg-uks-devt-dw-ccc-test-automation-project"
+    name: "vm-uks-devt-dw-ccc-t144"
+  register: mongodb_nic
+
+- name: Set fact for MongoDB IP address
+  set_fact:
+    mongodb_ip: "{{ mongodb_nic.networkinterfaces[0].ip_configurations[0].private_ip_address }}"
+
+- name: Get SQL username 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: sql-admin-username
+  register: sql_admin_user_output
+
+- name: Set SQL username fact
+  set_fact:
+    sql_admin_username: "{{ sql_admin_user_output.secrets[0].secret }}"
+
+- name: Get SQL password 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: sql-admin-password
+  register: sql_admin_pass_output
+
+- name: Set SQL password fact
+  set_fact:
+    sql_admin_password: "{{ sql_admin_pass_output.secrets[0].secret }}"
+
+- name: Get VM Username
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-username
+  register: admin_user_output
+  
+- name: Set VM Username fact 
+  set_fact:
+    admin_user: "{{ admin_user_output.secrets[0].secret }}"
+
+- name: Get VM Password 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-password
+  register: admin_pass_output
+
+- name: Set VM password fact
+  set_fact:
+    admin_pass: "{{ admin_pass_output.secrets[0].secret }}"

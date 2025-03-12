@@ -1,0 +1,178 @@
+- name: Download Nectar 
+  ansible.windows.win_get_url:
+    url: "https://gitlab.com/api/v4/projects/27336081/packages/generic/nectar-cx/{{ lookup('env', 'nectar_cx_version') }}/NectarCX-{{ lookup('env', 'nectar_cx_version') }}.zip"
+    dest: "F:/NectarCX-{{ lookup('env', 'nectar_cx_version') }}.zip"
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+      
+- name: Unzip Nectar
+  community.windows.win_unzip:
+    src: "F:/NectarCX-{{ lookup('env', 'nectar_cx_version') }}.zip"
+    dest: "F:/"
+
+- name: Install Amazon Corretto OpenJDK
+  ansible.windows.win_package:
+    path: F:\Nectar\CXA\dependencies\Java\amazon-corretto-{{ lookup('env', 'amazon_corretto_version') }}-windows-x64.msi
+    state: present
+    arguments: '/q'
+
+- name: Set CATALINA_HOME Environment variable
+  ansible.windows.win_environment:
+    name: CATALINA_HOME
+    state: present
+    value: F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}
+    level: machine
+
+- name: Copy msvcr120d.dll to SysWOW64 directory to prevent pesq.exe installation failure
+  ansible.windows.win_copy:
+    src: F:\Nectar\CXA\dependencies\msvcr120d DLL\msvcr120d.dll
+    dest: C:\Windows\SysWOW64
+    remote_src: yes
+
+- name: Execute pesq.exe
+  ansible.windows.win_command: pesq.exe
+  args:
+    chdir: F:\Nectar\CXA\pesq
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+- name: Install nectar-cxa-scheduler
+  ansible.windows.win_command: nectar-cxa-scheduler.exe install
+  args:
+    chdir: F:\Nectar\CXA\campaign_scheduler
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+  
+
+- name: Install nectar-cxa-gitlab
+  ansible.windows.win_command: nectar-cxa-gitlab.exe install
+  args:
+    chdir: F:\Nectar\CXA\gitlab-connector
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+
+- name: Install nectar-cxa-issueTracker
+  ansible.windows.win_command: nectar-cxa-issueTracker.exe install
+  args:
+    chdir: F:\Nectar\CXA\issue-tracker-integration
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+
+- name: Install nectar-cxa-webinteraction.exe
+  ansible.windows.win_command: nectar-cxa-webinteraction.exe install
+  args:
+    chdir: F:\Nectar\CXA\web_interaction
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+
+- name: Install Elastic as a Service
+  ansible.windows.win_command: elasticsearch-service.bat install
+  args:
+    chdir: F:\Nectar\CXA\elasticsearch-{{ lookup('env', 'elasticsearch_version') }}\bin
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+
+- name: Install Liferay as a Service
+  ansible.windows.win_command: service.bat install NectarCXA
+  args:
+    chdir: F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}\bin
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+
+
+# - name: Check if Tomcat service is already installed
+#   ansible.windows.win_service:
+#     name: NectarCXA
+#   register: cxa_present_pesq
+#   ignore_errors: yes
+
+# # - name: Check if CXA Scheduler service is already installed
+# #   ansible.windows.win_service:
+# #     name: nectar-cxa-scheduler
+# #   register: scheduler_present
+# #   ignore_errors: yes
+
+# # - name: Check if CXA Gitlab service is already installed
+# #   ansible.windows.win_service:
+# #     name: nectar-cxa-gitlab-connector
+# #   register: gitlab_present
+# #   ignore_errors: yes
+
+
+# #   when: gitlab_present.state is not defined or gitlab_present.name is not defined
+
+# - name: Check if CXA Issue Tracker service is already installed
+#   ansible.windows.win_service:
+#     name: nectar-cxa-issueTracker
+#   register: issueTracker_present
+#   ignore_errors: yes
+
+# #   when: issueTracker_present.state is not defined or issueTracker_present.name is not defined
+
+# # - name: Check if CXA Web Interaction service is already installed
+# #   ansible.windows.win_service:
+# #     name: nectar-cxa-webinteraction
+# #   register: webinteraction_present
+# #   ignore_errors: yes
+
+
+# #   when: webinteraction_present.state is not defined or webinteraction_present.name is not defined
+
+# # - name: Check if Elastic Search service is already installed
+# #   ansible.windows.win_service:
+# #     name: elasticsearch-service-x64
+# #     state: started
+# #   register: elastic_present
+# #   ignore_errors: yes
+
+
+# #   when: elastic_present.state is not defined or elastic_present.name is not defined
+
+
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# # - name: Check if NectarCXA service is already installed
+# #   ansible.windows.win_service:
+# #     name: NectarCXA
+# #   register: cxa_present
+# #   ignore_errors: true
+
+#   # when: cxa_present.state is not defined or cxa_present.name is not defined
+
+# - name: Check if NectarCXA service is up
+#   ansible.windows.win_service:
+#     name: NectarCXA
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+

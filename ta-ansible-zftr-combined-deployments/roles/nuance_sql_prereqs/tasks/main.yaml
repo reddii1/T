@@ -1,0 +1,126 @@
+- name: Check MSSQL is installed
+  ansible.windows.win_stat:
+    path: C:\Program Files\Microsoft SQL Server\MSSQL15.MSSQLSERVER\MSSQL\Binn\sqlservr.exe
+  register: sql_installed
+  ignore_errors: true
+
+- name: Create folder 
+  ansible.windows.win_file:
+    path: C:\Users\Public\Downloads\SQL
+    state: directory
+
+- name: Get SQL Server 2019
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/sqlserverdev-2019/15.2204.5490.2/SQL2019-SSEI-Dev.exe
+    dest: C:\Users\Public\Downloads\SQL
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Download Installer 
+  ansible.windows.win_command: C:\Users\Public\Downloads\SQL\SQL2019-SSEI-Dev.exe /ACTION=Download MEDIAPATH=C:\Users\Public\Downloads\SQL /QUIET
+
+- name: Extract the Installer
+  ansible.windows.win_command: C:\Users\Public\Downloads\SQL\SQLServer2019-DEV-x64-ENU.exe /q /x:C:\Users\Public\Downloads\SQL\SQLServer2019-DEV-x64-ENU\
+
+- name: Copy the installation config file
+  ansible.windows.win_template:
+    src: "{{ item }}"
+    dest: C:\Users\Public\Downloads\SQL\ConfigurationFile.ini
+  with_items:
+    - 'ConfigurationFile.ini.j2'
+
+- name: Install SQL Server
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\SQL\SQLServer2019-DEV-x64-ENU\setup.exe 
+    arguments: '/q /ConfigurationFile="C:\Users\Public\Downloads\SQL\ConfigurationFile.ini" /IAcceptSqlServerLicenseTerms /ENU'
+  vars:
+    ansible_become: yes
+    ansible_become_method: runas
+    ansible_become_user: "{{ ansible_hostname }}\\{{ hostvars['localhost']['admin_user'] }}"
+    ansible_become_pass: "{{ hostvars['localhost']['admin_pass'] }}"
+  when: not sql_installed.stat.exists
+
+# SQL CLI Tools
+- name: Download SQL cli tools
+  ansible.windows.win_get_url:
+    url: https://download.microsoft.com/download/a/a/4/aa47b3b0-9f67-441d-8b00-e74cd845ea9f/EN/x64/MsSqlCmdLnUtils.msi
+    dest: C:\Users\Public\Downloads\SQL
+
+- name:  Install SQL cli tools
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\SQL\MsSqlCmdLnUtils.msi
+    arguments: "/passive IACCEPTMSSQLCMDLNUTILSLICENSETERMS=YES"
+
+- name: Copy the SQL Script
+  ansible.windows.win_template:
+    src: "create-db-account-and-databases.sql.j2"
+    dest: C:\Users\Public\Downloads\SQL\create-db-account-and-databases.sql
+
+- name: Create SQL Server Login and Databases
+  ansible.windows.win_command: 'sqlcmd -i create-db-account-and-databases.sql'
+  args:
+    chdir: C:\Users\Public\Downloads\SQL
+
+- name: Copy Nuance SQL Scripts
+  ansible.windows.win_copy:
+    src: "./"
+    dest: C:\Users\Public\Downloads\SQL
+
+- name: Create Tables
+  ansible.windows.win_command: 'sqlcmd -d mserver -i create-tables-sqlserver.sql'
+  args:
+    chdir: C:\Users\Public\Downloads\SQL
+
+- name: Download SSMS
+  ansible.windows.win_get_url:
+    url: https://gitlab.com/api/v4/projects/27336081/packages/generic/microsoft-sql-server-management-studio/18.12.1/SSMS-Setup-ENU.exe
+    dest: C:\Users\Public\Downloads\SQL
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name:  Install SSMS
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\SQL\SSMS-Setup-ENU.exe
+    arguments: " /Install /Quiet /Norestart /Logs log.txt"
+  when: not sql_installed.stat.exists
+
+- name: Create folder for JDBC
+  ansible.windows.win_file:
+    path: C:\JDBC
+    state: directory
+
+- name: Download JDBC 6.4
+  ansible.windows.win_get_url:
+    url:  https://gitlab.com/api/v4/projects/27336081/packages/generic/sqljdbc/6.4/sqljdbc_6.4.zip
+    dest: C:\Users\Public\Downloads\SQL
+    headers: 
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Extract JDBC binaries
+  community.windows.win_unzip:
+    src: C:\Users\Public\Downloads\SQL\sqljdbc_6.4.zip
+    dest: C:\JDBC
+
+- name: Download ODBC installation binaries
+  ansible.windows.win_get_url:
+    url:  https://gitlab.com/api/v4/projects/27336081/packages/generic/ODBCDriver_18/18/msodbcsql.msi
+    dest: C:\Users\Public\Downloads\SQL\msodbcsql.msi
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Install OBDC Driver
+  ansible.windows.win_package:
+    path: C:\Users\Public\Downloads\SQL\msodbcsql.msi
+    arguments: 'IACCEPTMSODBCSQLLICENSETERMS=YES'
+
+# - name: Configure OBDC Driver
+#   ansible.windows.win_shell: |
+#      $NewDsn = Add-OdbcDsn -Name "MSSQLSERVER" -DriverName "ODBC Driver 18 for SQL Server" -DsnType "System" -SetPropertyValue @("Server=localhost", "Trusted_Connection=Yes", "Database=mserver", "TrustServerCertificate=Yes") -PassThru
+#   # when: not sql_exists.stat.exists
+ 
+# - name: Restore SQL conf for mserver
+#   ansible.windows.win_command: |
+#     SqlCmd -E -Q "RESTORE DATABASE mserver FROM DISK='mserver.bak'"
+#   args:
+#     chdir: C:\Users\Public\Downloads\SQL
+#   # when: not sql_exists.stat.exists

@@ -1,0 +1,32 @@
+---
+- name: copy config folder
+  copy:
+    force: yes
+    src: ./conf_holder/services.conf
+    dest: /etc/xms/nodecontroller/services.conf
+
+- name: copy snmp conf
+  copy:
+    force: yes
+    src: ./conf_holder/snmpd.local.conf
+    dest: /etc/snmp/snmpd.local.conf
+
+- name: copy services conf
+  copy:
+    force: yes
+    src: ./conf_holder/services.conf
+    dest: /etc/xms/nodecontroller/services.conf
+
+- name: copy cdserver folder
+  copy:
+    force: yes
+    src: ./conf_holder/cdrserver
+    dest: /etc/xms/
+    directory_mode:
+  tags:
+    - parentdir
+  
+- name: Copy xms backup
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/xmsbackup.tar"
+    dest: /etc/xms/backup/xms_backup.tar.gz

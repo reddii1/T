@@ -1,0 +1,83 @@
+ $ErrorActionPreference = "SilentlyContinue";
+try { 
+
+# Create firewall exception
+netsh advfirewall firewall add rule name="WinRM-HTTPS (5986)" dir=in action=allow protocol=TCP localport=5986
+
+# Generate self sign cert
+$Cert = New-SelfSignedCertificate -CertstoreLocation Cert:\LocalMachine\My -DnsName "$env:COMPUTERNAME" 
+
+# Delete any existing WinRM listeners
+winrm delete winrm/config/listener?Address=*+Transport=HTTP  2>$Null
+winrm delete winrm/config/listener?Address=*+Transport=HTTPS 2>$Null
+
+# Disable unencrypted and basic auth
+winrm set winrm/config/service '@{AllowUnencrypted="false"}'
+winrm set winrm/config/client '@{AllowUnencrypted="false"}'
+winrm set winrm/config/service/auth '@{Basic="false"}'
+winrm set winrm/config/client/auth  '@{Basic="false"}'
+
+# Enable certificate auth
+winrm set winrm/config/service/Auth '@{Certificate="true"}'
+
+# Create HTTPS listener
+winrm create "winrm/config/listener?Address=*+Transport=HTTPS" "@{Port=`"5986`";Hostname=`"$env:COMPUTERNAME`";CertificateThumbprint=`"$($Cert.Thumbprint)`"}" 
+
+# Create certificate
+ echo "-----BEGIN CERTIFICATE-----
+MIIC8jCCAdqgAwIBAgIJALVrPy+RLqvRMA0GCSqGSIb3DQEBCwUAMBQxEjAQBgNV
+BAMMCXJvb3RhZG1pbjAeFw0yMjA2MjcwODA2MjhaFw0zMjA2MjQwODA2MjhaMBQx
+EjAQBgNVBAMMCXJvb3RhZG1pbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC
+ggEBAN02kQLuq1kEsb1mhlfbQNZ8AIhzVUEl9v/Btm8/pixSNr3M5GyUOKgZyOWU
+hh7Ph2q/btYB6CoHNfA8mR4Sj6/9PR5MnFCDrVsDmoaPEp99Jotpkbt1XOkvIc4J
+aBA0rkZbyMbCg5HNdVWDonv1H2SeLASC96CnXq0NNLqOUKOeDAlj/Kyfe+2gWdm6
+hfkEZhq4bFepP+kJY5isJrKu8NGhpdwbddpMYNWs7dzJCsgJ/7ByHvxtjkgfihr/
+PzvOlGB01YfpSFGNGoC+icjaJ3Av7di2+t6n/6psz2l38HjRolmDdQPqnqhV2E3m
+czPEpYzTPqJv5xDY5VRYmGS0JpcCAwEAAaNHMEUwEwYDVR0lBAwwCgYIKwYBBQUH
+AwIwLgYDVR0RBCcwJaAjBgorBgEEAYI3FAIDoBUME3Jvb3RhZG1pbkBsb2NhbGhv
+c3QwDQYJKoZIhvcNAQELBQADggEBANoGywOyCu30EG7+gY9FZuLGpSqKBRE8LsFB
+izoGUmou/bGBY55dRyAskYwBdjhquPAs8g+qhE87zec7gdMzoygWhBuQ1qfzK35w
+o/xL8mCASjQM8AdI4NSOL7I9/5No2DxtKpAN6U3qF4qJyqEYexjyMpaaL5xvtd52
+8I33X9Nlx1V4uf0p3Lk3h2oahxzzldGTPcJfBSoTJLhUB/EoUneT8fqhJxWCTj0d
+5/pWCiLKttPURyqwsWmJxtPQ1jmfH59+dVyuzCgtZPgXwxwNcltzSpHpKadFoIt8
+rQTWXHBs2iDs5jhWzr7zOLliEb85rlvBDzyJwpHRgdTRLQtGUUo=
+-----END CERTIFICATE-----" | Out-File -FilePath "C:\Windows\Temp\cert.pem"
+
+# Import rootadmin certificate to the Root and TrustedPeople certificate store for ansible access
+$certificate_path = "C:\Windows\Temp\cert.pem"
+$certificate = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Certificate2
+$certificate.Import( $certificate_path )
+
+$local_machine = [System.Security.Cryptography.X509Certificates.StoreLocation]::LocalMachine
+$store_names = ( [System.Security.Cryptography.X509Certificates.StoreName]::Root, 
+                 [System.Security.Cryptography.X509Certificates.StoreName]::TrustedPeople )
+
+$store_names | ForEach-Object {
+    $store = New-Object -TypeName System.Security.Cryptography.X509Certificates.X509Store -ArgumentList $_, $local_machine
+    $store.Open("MaxAllowed")
+    $store.Add($certificate)
+    $store.Close()
+}
+
+# Mapping a certificate to and rootadmin account
+$username = "{{ admin_user }}"
+$password = ConvertTo-SecureString -String "{{ admin_pass }}" -AsPlainText -Force
+$credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $username, $password
+$thumbprint = (Get-ChildItem -Path cert:\LocalMachine\root | Where-Object { $_.Subject -eq "CN=$username" }).Thumbprint
+
+New-Item -Path WSMan:\localhost\ClientCertificate `
+    -Subject "$username@localhost" `
+    -URI * `
+    -Issuer $thumbprint `
+    -Credential $credential `
+    -Force 
+
+# Configure and restart the WinRM Service; Enable the required firewall exception
+Stop-Service -Name WinRM
+Set-Service -Name WinRM -StartupType Automatic
+Start-Service -Name WinRM
+
+Set-ItemProperty -Path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL -Name ClientAuthTrustMode -Type DWord -Value 2  }
+catch {
+  exit 0
+} 

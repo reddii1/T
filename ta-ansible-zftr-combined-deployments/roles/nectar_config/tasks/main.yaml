@@ -1,0 +1,430 @@
+- name: Replace xms ip config
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: dialogic.xms.ip=
+    new_contents: dialogic.xms.ip={{ hostvars['localhost']['xms_ip'] }}
+
+- name: Replace SMB user
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: smb.username=cxa
+    new_contents: smb.username=CXA
+
+- name: Replace SMB Password
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: smb.password=cxa
+    new_contents: smb.password=CXA
+
+- name: Replace xms media url
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: upload_path_prefix=https://[MEDIA_SERVER]:10443/media/
+    new_contents: upload_path_prefix=https://{{ hostvars['localhost']['xms_ip'] }}:10443/media/
+
+- name: Replace SQL Database liferay config 
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: jdbc:sqlserver://localhost:1433;databaseName=cx_portal;trustServerCertificate=true;encrypt=true
+    new_contents: jdbc:sqlserver://sql-uks-devt-dw-ccc-ta-ansible.database.windows.net:1433;databaseName=cxa_portal;trustServerCertificate=true;encrypt=true
+  when: lookup('env', 'ENVIRONMENT') == "dev"
+
+- name: Replace SQL Database liferay config
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: jdbc:sqlserver://localhost:1433;databaseName=cx_portal;trustServerCertificate=true;encrypt=true
+    new_contents: jdbc:sqlserver://sql-uks-devt-dw-ccc-ta-ansible.database.windows.net:1433;databaseName=cx_portal;trustServerCertificate=true;encrypt=true
+  when: lookup('env', 'ENVIRONMENT') == "live"
+
+- name: Replace SQL database username config
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace('{{ original_contents }}', '{{ new_contents }}') | Set-Content -Path '{{ item }}'
+  with_items:
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: jdbc.default.username=cxa
+    new_contents: jdbc.default.username={{ hostvars['localhost']['sql_admin_username'] }}
+
+- name: Replace SQL database password config
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: jdbc.default.password=cxa
+    new_contents: jdbc.default.password={{  hostvars['localhost']['sql_admin_password'] }}
+
+- name: Replace xms ivr url
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\portal-ext.properties
+  vars:
+    original_contents: discover.ivr.server.base.url=http://[MEDIA_SERVER]:7070/
+    new_contents: discover.ivr.server.base.url=http://{{ hostvars['localhost']['xms_ip'] }}:7070/
+
+- name: Replace MongoDB IP
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: mongo.ip=
+    new_contents: mongo.ip={{ hostvars['localhost']['mongodb_ip'] }}
+
+- name: Replace SQL Database Campaign scheduler config
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: jdbc:sqlserver://localhost;databaseName=cx_portal;trustServerCertificate=true;encrypt=true
+    new_contents: jdbc:sqlserver://sql-uks-devt-dw-ccc-ta-ansible.database.windows.net;databaseName=cxa_portal;trustServerCertificate=true;encrypt=true
+  when: lookup('env', 'ENVIRONMENT') == "dev"
+  
+- name: Replace SQL Database Campaign scheduler config
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: jdbc:sqlserver://localhost;databaseName=cx_portal;trustServerCertificate=true;encrypt=true
+    new_contents: jdbc:sqlserver://sql-uks-devt-dw-ccc-ta-ansible.database.windows.net;databaseName=cx_portal;trustServerCertificate=true;encrypt=true
+  when: lookup('env', 'ENVIRONMENT') == "live"
+
+- name: Replace SQL database user
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: spring.datasource.username=cxa
+    new_contents: spring.datasource.username={{ hostvars['localhost']['sql_admin_username'] }}
+
+- name: Replace SQL database password
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: spring.datasource.password=cxa
+    new_contents: spring.datasource.password={{  hostvars['localhost']['sql_admin_password']  }}
+
+- name: Replace DID Range 
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: fixed.cli.numbers=6029000001-6029999999
+    new_contents: fixed.cli.numbers=1253834730-1253834799
+
+- name: Media Server App ID for Nectar Dev 
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: app_id=appTest
+    new_contents: app_id=appTestDev
+  when: lookup('env', 'ENVIRONMENT') == "dev"
+
+- name: Media Server Loopback Destination for Nectar Dev 
+  ansible.windows.win_powershell:
+    script: |
+      (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+  with_items:
+     - F:\Nectar\CXA\campaign_scheduler\application.properties
+  vars:
+    original_contents: radar.loop.back.destination=RadarLoopBackConfTest
+    new_contents: radar.loop.back.destination=RadarLoopBackConfTestDev
+  when: lookup('env', 'ENVIRONMENT') == "dev"
+
+- name: Add Java Options
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Java
+    name: Options
+    data: [
+      '-Dcatalina.home=F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\tomcat-9.0.73',
+      '-Dcatalina.base=F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\tomcat-9.0.73',
+      '-Dignore.endorsed.dirs=F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\tomcat-9.0.73\endorsed',
+      '-Djava.io.tmpdir=F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\tomcat-9.0.73\temp',
+      '-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager',
+      '-Djava.util.logging.config.file=F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\tomcat-9.0.73\conf\logging.properties',
+      '-Duser.timezone=UTC',
+      '-Dfile.encoding=UTF-8',
+      '-Djdk.util.zip.disableZip64ExtraFieldValidation=true',
+      ]
+    type: multistring
+
+- name: Update Initial Memory Pool
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Java
+    name: JvmMs
+    data: 8192
+    type: dword
+
+- name: Update Maximum Memory Pool
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Java
+    name: JvmMx
+    data: 8192
+    type: dword
+
+- name: Update Logging Error
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Log
+    name: Level
+    data: Error
+
+- name: Add Log prefix 
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Log
+    name: Prefix
+    data: commons-daemon
+
+- name: Update Redirect Stderror
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Log
+    name: StdError
+    state: absent
+    delete_key: no
+
+- name: Update Redirect Stdout
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\WOW6432Node\Apache Software Foundation\Procrun 2.0\NectarCXA\Parameters\Log
+    name: StdOutput
+    state: absent
+    delete_key: no
+
+# - name: Download latest Test Cases Data Backup # Add Nectar Version var for the next upgrade
+#   ansible.windows.win_get_url:
+#     url: "https://gitlab.com/api/v4/projects/43328313/packages/generic/test-case-data-{{ lookup('env', 'ENVIRONMENT')/2024.0.0/test-case-data-{{ lookup('env', 'ENVIRONMENT').zip }}"
+#     dest: "F:/Nectar/CXA/liferay-ce-portal-{{ lookup('env', 'liferay_version') }}/test-case-data-{{ lookup('env', 'ENVIRONMENT').zip"
+#     headers:
+#       PRIVATE-TOKEN: "{{ lookup('env', 'NECTAR_BACKUP_PAT' }}"
+      
+# - name: Unzip Test Cases Data .csv files
+#   community.windows.win_unzip:
+#     src: "F:/Nectar/CXA/liferay-ce-portal-{{ lookup('env', 'liferay_version') }}/test-case-data-{{ lookup('env', 'ENVIRONMENT').zip"
+#     dest: "F:/Nectar/CXA/liferay-ce-portal-{{ lookup('env', 'liferay_version') }}/"
+
+- name: Start nectar-cxa-webinteraction Service
+  ansible.windows.win_service:
+    name: nectar-cxa-webinteraction
+    state: started
+
+- name: Set elasticsearch service to automatic
+  ansible.windows.win_service:
+    name: elasticsearch-service-x64
+    start_mode: auto
+    state: started
+
+- name: Start nectar-cxa-gitlab Service
+  ansible.windows.win_service:
+    name: nectar-cxa-gitlab-connector
+    state: started
+
+- name: Start nectar-cxa-issueTracker Service
+  ansible.windows.win_service:
+    name: nectar-cxa-issueTracker
+    state: started
+
+- name: Start nectar-cxa-scheduler Service
+  ansible.windows.win_service:
+    name: nectar-cxa-scheduler
+    state: started
+
+- name: Start NectarCXA Service
+  ansible.windows.win_service:
+    name: NectarCXA
+    start_mode: auto
+    state: restarted
+    username: SYSTEM
+
+
+# ########This is part of the nectar docs but not part of the current (working) build
+# # - name: Download Server.xml
+# #   ansible.windows.win_get_url:
+# #     url: "https://sauksdevtdwccctaprereq.blob.core.windows.net/nectar/server.xml{{ blob_sas }}"
+# #     dest: F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}\conf\server.xml
+# #     force: true
+
+# # - name: Replace httpd-vhosts-conf
+# #   ansible.windows.win_powershell:
+# #     script: |
+# #       (Get-Content "{{ item }}").replace("{{ original_contents }}", "{{ new_contents }}") | Set-Content -Path "{{ item }}"
+# #   with_items:
+# #      - F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}conf\server.xml
+# #   vars:
+# #     original_contents: 'REPLACE_SELF_IP'
+# #     new_contents: "{{ ansible_ip_addresses[0] }}"
+# ########
+
+# - name: Check if NectarCXA service is already installed
+#   ansible.windows.win_service:
+#     name: NectarCXA
+#   register: cxa_present
+#   ignore_errors: true
+
+# - name: Check if Apache service is already installed
+#   ansible.windows.win_service:
+#     name: Apache
+#   register: apache_present
+#   ignore_errors: true
+
+# - name: Restart for registry changes
+#   ansible.windows.win_reboot:
+#     post_reboot_delay: 60
+#   when: apache_present.state is not defined or apache_present.name is not defined
+
+# - name: Run Apach service batch file
+#   ansible.windows.win_command: httpd.exe -k install -n Apache
+#   args:
+#     chdir: F:\Nectar\CXA\Apache24\bin
+#   when: apache_present.state is not defined or apache_present.name is not defined
+
+# - name: Check if Apache service is up
+#   ansible.windows.win_service:
+#     name: Apache
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# - name: Check if nectar-cxa-scheduler service is up
+#   ansible.windows.win_service:
+#     name: nectar-cxa-scheduler
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# - name: Check if nectar-cxa-issueTracker service is up
+#   ansible.windows.win_service:
+#     name: nectar-cxa-issueTracker
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# - name: Check if nectar-cxa-scheduler service is up
+#   ansible.windows.win_service:
+#     name: nectar-cxa-scheduler
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# - name: Check if nectar-cxa-webinteraction service is up
+#   ansible.windows.win_service:
+#     name: nectar-cxa-webinteraction
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# - name: Run tomcat service batch file
+#   ansible.windows.win_command: service.bat install NectarCXA
+#   args:
+#     chdir: F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}\bin
+#   when: cxa_present.state is not defined or cxa_present.name is not defined
+
+# - name: check if Apache is available
+#   ansible.windows.win_uri:
+#     url: http://127.0.0.1/
+#     method: GET
+#     validate_certs: no
+#     status_code: 200
+#   register: _result
+#   until: _result.status_code == 200
+#   retries: 5
+#   delay: 5
+
+# - name: Get the NectarCXA service info
+#   ansible.windows.win_service:
+#     name: NectarCXA
+#   register: nectar_service_info
+
+# - name: Ensure the NectarCXA service has rootadmin assigned as startup
+#   ansible.windows.win_service:
+#     name: NectarCXA
+#     username: "rootadmin"
+#     password: "{{ ansible_env.ADMIN_PASSWORD }}"
+
+# - name: Add rootadmin to Log on as a service
+#   ansible.windows.win_user_right:
+#     name: SeServiceLogonRight
+#     users:
+#     - .\rootadmin
+#     action: add
+
+# - name: Check if NectarCXA service is up
+#   ansible.windows.win_service:
+#     name: NectarCXA
+#     start_mode: auto
+#     state: started
+#     failure_actions:
+#       - type: restart
+#         delay_ms: 5000
+
+# - name: Setup delete liferay tempwav scheduled task
+#   ansible.windows.win_powershell:
+#     script: $Sta = New-ScheduledTaskAction -Execute C:\Windows\System32\forfiles.exe -Argument /p "F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tempwav" /s /d -1 /c "cmd /c del @file"
+#             $Stt = New-ScheduledTaskTrigger -Daily -At 6am
+#             Register-ScheduledTask Delete Liferay tempwav -Action $Sta -Trigger $Stt
+
+# - name: Setup delete liferay logs scheduled task
+#   ansible.windows.win_powershell:
+#     script: $Sta = New-ScheduledTaskAction -Execute C:\Windows\System32\forfiles.exe -Argument /p "F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\logs" /s /d -1 /c "cmd /c del @file"
+#             $Stt = New-ScheduledTaskTrigger -Daily -At 8am
+#             Register-ScheduledTask Delete Liferay logs -Action $Sta -Trigger $Stt
+
+# - name: Setup delete tomcat logs scheduled task
+#   ansible.windows.win_powershell:
+#     script: $Sta = New-ScheduledTaskAction -Execute C:\Windows\System32\forfiles.exe -Argument /p "F:\Nectar\CXA\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\tomcat-{{ lookup('env', 'tomcat_version') }}\logs" /s /d -1 /c "cmd /c del @file"
+#             $Stt = New-ScheduledTaskTrigger -Daily -At 9am
+#             Register-ScheduledTask Delete Liferay tempwav -Action $Sta -Trigger $Stt

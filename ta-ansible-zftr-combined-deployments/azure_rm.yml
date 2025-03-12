@@ -1,0 +1,23 @@
+plugin: azure.azcollection.azure_rm
+
+# include_vm_resource_groups:
+  # - rg-uks-devt-dw-ccc-test-automation
+
+auth_source: auto
+
+conditional_groups:
+  linux: "'linux' in os_profile.system"
+  windows: "'linux' not in os_profile.system"
+  mongodb: "'mongodb' in tags.applicationRole"
+  xms: "'xms' in tags.applicationRole"
+  nuance: "'nuance' in tags.applicationRole"
+  nectar: "'nectar' in tags.applicationRole"
+  radar: "'radar' in tags.applicationFunction"
+  dev: "'dev' in tags.Environment"
+  live: "'live' in tags.Environment"
+
+# keyed_groups:
+#   - key: tags.applicationRole
+#   - key: tags.applicationFunction
+  
+fail_on_template_errors: false

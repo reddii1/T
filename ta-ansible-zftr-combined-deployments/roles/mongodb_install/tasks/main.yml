@@ -1,0 +1,31 @@
+---
+- name: Install mongodb v4.4.4 via yum
+  ansible.builtin.yum:
+    name: https://repo.mongodb.org/yum/redhat/7/mongodb-org/4.4/x86_64/RPMS/mongodb-org-server-4.4.4-1.el7.x86_64.rpm
+    state: present
+
+- name: Install mongodb shell
+  ansible.builtin.yum:
+    name: https://repo.mongodb.org/yum/redhat/7/mongodb-org/4.4/x86_64/RPMS/mongodb-org-shell-4.4.4-1.el7.x86_64.rpm
+    state: present
+
+- name: Start MongoDB if not started
+  ansible.builtin.service:
+    name: mongod
+    enabled: true
+    state: started
+
+- name: Transfer MongoDB xms user create script
+  copy: src=scripts/mongodb_user.sh dest=/home/{{ ansible_user }}
+  no_log: true
+
+- name: Execute MongoDB xms user setup script
+  shell: mongodb_nectar_username_fact={{ hostvars['localhost']['mongodb_nectar_username_fact'] }} mongodb_nectar_password_fact={{ hostvars['localhost']['mongodb_nectar_password_fact'] }} sh /home/{{ ansible_user }}/mongodb_user.sh
+  changed_when: false
+  no_log: true
+
+# - name: Add Media Servers Configuration Parameters 
+#   ansible.builtin.replace:
+#     path: /etc/mongod.conf
+#     regexp: "bindIp: 127.0.0.1  # Enter 0.0.0.0,:: to bind to all IPv4 and IPv6 addresses or, alternatively, use the net.bindIpAll setting." 
+#     replace: "bindIp: 127.0.0.1,{{ ansible_env.XMS_RADAR_NIC_IP_FACT }}" 

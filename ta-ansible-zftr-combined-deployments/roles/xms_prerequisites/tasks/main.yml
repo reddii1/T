@@ -1,0 +1,90 @@
+---
+- name: Check for idempotency folder
+  ansible.builtin.stat:
+    path: /home/CXAdmin/idempotency
+  register: idempotency_check
+
+- name: Create directory for unarchive
+  ansible.builtin.file:
+    # path: /datadrive/xms_install
+    path: /opt/xms_install
+    state: directory
+
+- name: Create CX Admin User
+  ansible.builtin.user:
+    name: CXAdmin
+    password: "{{ hostvars['localhost']['xms_cx_admin_password'] }}" 
+  no_log: true
+
+- name: Install dependencies
+  yum:
+    name: "{{ item }}"
+    state: present
+    skip_broken: true
+  loop:
+    - kernel-devel
+    - perl-core
+    - perl-Crypt-OpenSSL-Random
+    - perl-JSON
+    - openssl
+    - redhat-lsb
+    - libstdc++
+    - libstdc++-4.8.5-44.el7.i686
+    - net-snmp-utils
+    - js
+    - java-1.8.0-openjdk
+    - telnet
+    - postgresql-libs
+    - gcc
+    - gperftools-libs
+    - boost-regex
+    - mod_ssl
+    - php
+    - httpd
+    - net-snmp
+    - php-common
+    - nfs-utils
+    - php-ldap
+    - sox
+    - php-cli
+    - net-snmp-libs
+    - expect
+    - gamin
+    - php-pdo
+  no_log: false
+
+- name: Ensure epel repo present
+  ansible.builtin.yum:
+    name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+    state: present
+
+- name: Install python-pip
+  ansible.builtin.yum:
+    name: python-pip
+    enablerepo: epel
+
+- name: Install libtiff-tools
+  ansible.builtin.yum:
+    name: libtiff-tools
+    # enablerepo: rhui-rhel-7-server-rhui-optional-rpms
+
+- name: Install pexpect
+  ansible.builtin.pip:
+    name: pexpect==3.3
+    state: present
+
+- name: Amend SNMP config
+  ansible.builtin.lineinfile:
+    path: /etc/snmp/snmpd.conf
+    regexp: 'agentAddress udp:161,udp6:\[::]:161'
+    line: agentAddress tcp:127.0.0.1:161
+    state: present
+    create: yes
+
+- name: Solve XMS mounting errors pt1
+  ansible.builtin.command: mount -o remount,exec /var/tmp
+  when: not idempotency_check.stat.exists
+
+- name: Solve XMS mounting errors pt2
+  ansible.builtin.command: mount -o remount,exec /tmp
+  when: not idempotency_check.stat.exists

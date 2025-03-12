@@ -1,0 +1,10 @@
+smb_directories:
+  - /var/lib/xms/media/en-US/testCaseRunResultRecordings
+  - /var/lib/xms/media/en-US/testStepResultMosFiles
+  - /var/lib/xms/media/en-US/csatrecordings
+  - /var/lib/xms/media/en-US/testmedia
+  - /var/lib/xms/media/en-US/DTMF
+  - /var/lib/xms/media/en-US/csatFiles
+  - /var/lib/xms/media/en-US/csatPromptFiles
+  - /var/lib/xms/media/en-US/teststepmedia
+  - /var/lib/xms/media/en-US/transcriptionTest

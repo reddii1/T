@@ -1,0 +1,60 @@
+---
+- name: Does idempotency exist
+  ansible.builtin.stat:
+    path: /datadrive/idempotency
+  register: idempotency_exists
+
+- name: Ensure previous mount is removed if exists
+  ansible.posix.mount:
+    path: /datadrive
+    src: /dev/sdc
+    state: unmounted
+    fstype: ext4
+  when: not idempotency_exists.stat.exists
+
+- name: Ensure the data disk is "de-partitioned"
+  community.general.parted:
+    device: /dev/sdc
+    number: 1
+    state: absent
+  when: not idempotency_exists.stat.exists
+
+- name: Delete content & directory
+  file:
+    state: absent
+    path: /datadrive
+  when: not idempotency_exists.stat.exists
+
+- name: Create directory for datadrive
+  ansible.builtin.file:
+    path: /datadrive
+    state: directory
+  when: not idempotency_exists.stat.exists
+
+- name: Create a new ext4 primary partition
+  community.general.parted:
+    device: /dev/sdc
+    number: 1
+    state: present
+    fs_type: ext4
+  when: not idempotency_exists.stat.exists
+
+- name: Create the ext4 filesystem on /dev/sdc
+  community.general.filesystem:
+    fstype: ext4
+    dev: /dev/sdc
+  when: not idempotency_exists.stat.exists
+
+- name: Mount data drive
+  ansible.posix.mount:
+    path: /datadrive
+    src: /dev/sdc
+    state: mounted
+    fstype: ext4
+  when: not idempotency_exists.stat.exists
+
+- name: Create directory for idempotency 
+  ansible.builtin.file:
+    path: /datadrive/idempotency
+    state: directory
+  when: not idempotency_exists.stat.exists

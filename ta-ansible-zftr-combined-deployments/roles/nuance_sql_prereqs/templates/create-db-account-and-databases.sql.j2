@@ -1,0 +1,42 @@
+CREATE LOGIN ms WITH PASSWORD = 'msp', CHECK_POLICY = OFF, DEFAULT_LANGUAGE = English;
+go
+
+EXEC sp_addsrvrolemember 'ms', 'dbcreator';
+go
+
+create database mserver; 
+go
+
+USE master;
+GO
+
+DECLARE @username NVARCHAR(100) = 'ms';
+
+DECLARE @sql NVARCHAR(MAX) = '';
+
+-- Generate a script to grant 'ALTER ANY DATABASE' permission to the user.
+SELECT @sql += 'USE [' + name + '];' + CHAR(13) + CHAR(10) +
+              'CREATE USER [' + @username + '] FOR LOGIN [' + @username + '];' + CHAR(13) + CHAR(10) +
+              'ALTER ROLE [db_owner] ADD MEMBER [' + @username + '];' + CHAR(13) + CHAR(10)
+FROM sys.databases
+WHERE database_id > 4;  -- Skip system databases
+
+-- Execute the generated script to grant the permissions.
+EXEC sp_executesql @sql;
+
+USE mserver
+GO
+
+DECLARE @username NVARCHAR(100) = 'ms';
+
+DECLARE @sql NVARCHAR(MAX) = '';
+
+-- Generate a script to grant 'ALTER ANY DATABASE' permission to the user.
+SELECT @sql += 'USE [' + name + '];' + CHAR(13) + CHAR(10) +
+              'CREATE USER [' + @username + '] FOR LOGIN [' + @username + '];' + CHAR(13) + CHAR(10) +
+              'ALTER ROLE [db_owner] ADD MEMBER [' + @username + '];' + CHAR(13) + CHAR(10)
+FROM sys.databases
+WHERE database_id > 4;  -- Skip system databases
+
+-- Execute the generated script to grant the permissions.
+EXEC sp_executesql @sql;

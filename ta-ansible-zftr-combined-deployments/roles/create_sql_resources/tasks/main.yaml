@@ -1,0 +1,78 @@
+---
+- name: Get SQL username 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: sql-admin-username
+  register: sql_admin_user_output
+  no_log: true
+
+- name: Set SQL username fact
+  set_fact:
+    sql_admin_user: "{{ sql_admin_user_output.secrets[0].secret }}"
+  no_log: true
+
+- name: Get SQL password 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: sql-admin-password
+  register: sql_admin_pass_output
+  no_log: true
+
+- name: Set SQL password fact
+  set_fact:
+    sql_admin_pass: "{{ sql_admin_pass_output.secrets[0].secret }}"
+  no_log: true
+
+# - name: Get Private DNS Zone Info 
+#   azure.azcollection.azure_rm_privatednszone_info:
+#     resource_group: rg-uks-{{ lookup('env','environment_type') }}-dw-ccc-core
+#     name: dw-ccc-{{ lookup('env','environment_type') }}-vnet.database.windows.net
+#   register: priv_dns_info
+
+- name: Get Test Automation Subnet Info
+  azure_rm_subnet_info:
+    resource_group: "rg-uks-{{ lookup('env','environment_type') }}-dw-ccc-network"
+    virtual_network_name: "vnet-uks-{{ lookup('env','environment_type') }}-dw-ccc"
+    name: "test-automation-subnet"
+  register: ta_subnet
+
+- name: Create Azure SQL Server instance
+  azure.azcollection.azure_rm_sqlserver:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "sql-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-database"
+    location: uksouth
+    admin_username: "{{ sql_admin_user }}"
+    admin_password: "{{ sql_admin_pass }}"
+    public_network_access: Disabled
+    tags: "{{ ta_tags }}" 
+    state: "{{ lookup('env','STATE') }}"
+  register: az_sql_instance
+  
+- name: Create Azure SQL Private Endpoint
+  azure.azcollection.azure_rm_privateendpoint:
+    name: pe-sql-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    private_link_service_connections:
+      - name: test_automation_sql_instances
+        private_link_service_id: "{{ az_sql_instance.id }}"
+        group_ids: 
+          - sqlServer
+    subnet:
+      id: "{{ ta_subnet.subnets[0].id }}"
+
+- name: Create SQL group for private endpoint
+  azure.azcollection.azure_rm_privateendpointdnszonegroup:
+    name: "sql-zone-group"
+    private_endpoint: pe-sql-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    private_dns_zone_configs:
+      - name: "default"
+        private_dns_zone_id: "/subscriptions/0667cd15-c4e1-4972-8027-2b99722a085a/resourceGroups/rg-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-project/providers/Microsoft.Network/privateDnsZones/privatelink.database.windows.net"
+        # private_dns_zone_id: "{{ priv_dns_info.privatednszones[0].id }}"
+
+- name: Create Nectar CX SQL Database
+  azure.azcollection.azure_rm_sqldatabase:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: cx_portal
+    server_name: "sql-uks-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-database"
+    tags: "{{ ta_tags|combine({'applicationRole': 'nectar', 'applicationFunction': 'radar'}) }}"

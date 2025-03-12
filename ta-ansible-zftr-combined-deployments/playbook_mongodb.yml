@@ -1,0 +1,15 @@
+---
+- hosts: localhost
+  collections:
+    - azure.azcollection
+
+  roles:
+    - mongodb_facts
+
+- hosts: mongodb
+  become: true
+
+  tasks:
+    - name: Install MongoDB
+      include_role:
+        name: mongodb_install

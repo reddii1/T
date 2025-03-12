@@ -1,0 +1,63 @@
+- name: Get VM Username
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-username
+  register: admin_user_output
+  no_log: true
+  
+- name: Set VM Username fact 
+  set_fact:
+    admin_user: "{{ admin_user_output.secrets[0].secret }}"
+  no_log: true
+
+- name: Get ssh key
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: ssh-key
+  register: ssh_key_output
+  no_log: true
+
+- name: Set ssh key fact
+  set_fact:
+    ssh_key: "{{ ssh_key_output.secrets[0].secret }}"
+  no_log: true
+
+- name: Create XMS Radar Network Interface
+  azure_rm_networkinterface:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "nic-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-xms-radar"
+    create_with_security_group: no
+    subnet_name: 'test-automation-subnet'
+    virtual_network: 
+      name: "vnet-uks-{{ lookup('env','environment_type') }}-dw-ccc"
+      resource_group: "rg-uks-{{ lookup('env','environment_type') }}-dw-ccc-network"
+    security_group: "nsg-{{ lookup('env','environment_type') }}-test-automation" #
+    tags: "{{ ta_tags }}"
+
+- name: Create XMS Radar VM
+  azure_rm_virtualmachine:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-xms-radar"
+    short_hostname: XMSHOST01
+    vm_size: Standard_B2ms
+    network_interface_names:
+      - "nic-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-xms-radar"
+    public_ip_allocation_method: Disabled
+    managed_disk_type: StandardSSD_LRS
+    # data_disks:
+    #   - lun: 0
+    #     disk_size_gb: 100
+    #     managed_disk_type: StandardSSD_LRS
+    admin_username: "{{ admin_user }}"
+    ssh_password_enabled: false
+    ssh_public_keys:
+      - path: '/home/{{ admin_user }}/.ssh/authorized_keys'
+        key_data: "{{ ssh_key }}"
+    os_type: Linux
+    image:
+      id: '/subscriptions/67e5f2ee-6e0a-49e3-b533-97f0beec351c/resourceGroups/rg-dwp-dev-ss-shared-images/providers/Microsoft.Compute/galleries/GoldImagesDevGallery/images/RHEL7-CIS2'
+    tags: "{{ ta_tags|combine({'applicationRole': 'xms', 'applicationFunction': 'radar'}) }}"
+    state: "{{ lookup('env','STATE') }}"
+
+- name: Refresh Dynamic Inventory
+  meta: refresh_inventory

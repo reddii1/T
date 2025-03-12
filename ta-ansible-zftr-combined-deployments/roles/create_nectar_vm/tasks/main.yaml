@@ -1,0 +1,72 @@
+- name: Get VM Username
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-username
+  register: admin_user_output
+  no_log: true
+  
+- name: Set VM Username fact 
+  set_fact:
+    admin_user: "{{ admin_user_output.secrets[0].secret }}"
+  no_log: true
+
+- name: Get VM Password 
+  azure.azcollection.azure_rm_keyvaultsecret_info:
+    vault_uri: "{{ lookup('env','azure_vault_uri') }}"
+    name: vm-admin-password
+  register: admin_pass_output
+  no_log: true
+
+- name: Set VM password fact
+  set_fact:
+    admin_pass: "{{ admin_pass_output.secrets[0].secret }}"
+  no_log: true
+  
+- name: Create Nectar Radar Network Interface
+  azure_rm_networkinterface:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "nic-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+    create_with_security_group: no
+    subnet_name: 'test-automation-subnet'
+    virtual_network: 
+      name: "vnet-uks-{{ lookup('env','environment_type') }}-dw-ccc"
+      resource_group: "rg-uks-{{ lookup('env','environment_type') }}-dw-ccc-network"
+    security_group: "nsg-uks-{{ lookup('env','environment_type') }}-test-automation"
+    tags: "{{ ta_tags }}"
+  register: nectar_nic
+
+- name: Create Nectar Radar VM
+  azure_rm_virtualmachine:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+    short_hostname: radar{{ lookup('env','ENVIRONMENT') }}
+    vm_size: Standard_B4ms
+    network_interface_names: "nic-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+    public_ip_allocation_method: Disabled
+    managed_disk_type: StandardSSD_LRS
+    data_disks:
+      - lun: 0
+        disk_size_gb: 100
+        managed_disk_type: StandardSSD_LRS
+    admin_username: "{{ admin_user }}"
+    admin_password: "{{ admin_pass }}"
+    os_type: Windows
+    image:
+      id: '/subscriptions/67e5f2ee-6e0a-49e3-b533-97f0beec351c/resourceGroups/rg-dwp-dev-ss-shared-images/providers/Microsoft.Compute/galleries/GoldImagesDevGallery/images/WIN2019-CIS2'
+    tags: "{{ ta_tags|combine({'applicationRole': 'nectar', 'applicationFunction': 'radar'}) }}"
+    remove_on_absent: 
+      - network_interfaces 
+      - virtual_storage
+    state: "{{ lookup('env','STATE') }}"
+
+- name: Refresh Dynamic Inventory
+  meta: refresh_inventory
+
+- name: Generate WinRM Setup Script
+  ansible.builtin.template:
+    src: 'templates/winrm-https.ps1.j2'
+    dest: '{{ playbook_dir }}/winrm-https.ps1'
+
+- name: Setup WinRM
+  ansible.builtin.shell: az vm run-command invoke --command-id 'RunPowerShellScript' --resource-group  "{{ lookup('env','azure_resource_group') }}" --name s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }} --scripts @/builds/dwp/digital-channels-contact/contact2/testautomation/ta-ansible/winrm-https.ps1
+  ignore_errors: yes

@@ -1,0 +1,41 @@
+---
+- name: Download Dialogic XMS installation files
+  ansible.builtin.get_url:
+    url: "https://gitlab.com/api/v4/projects/27336081/packages/generic/dialogic-xms/{{ lookup('env','xms_version') }}.c7/dialogic_xms_{{ lookup('env','xms_version') }}.c7.tgz"
+    dest: "/opt/xms_install/dialogic_xms_{{ lookup('env','xms_version') }}.c7.tgz"
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+- name: Download DTMF binaries
+  ansible.builtin.get_url:
+    url: "https://gitlab.com/api/v4/projects/27336081/packages/generic/dialogic-xms/{{ lookup('env','xms_version') }}/DTMF.zip"
+    dest: "/opt/xms_install/DTMF.zip"
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'GITLAB_PRIVATE_TOKEN') }}"
+
+
+- name: Extract installation binaries
+  ansible.builtin.unarchive:
+    # src: "{{ playbook_dir }}/dialogic_xms_{{ lookup('env','xms_version') }}.c7.tgz"
+    # dest: /home/CXAdmin
+    src: "/opt/xms_install/dialogic_xms_{{ lookup('env','xms_version') }}.c7.tgz"
+    dest: /opt/xms_install/
+    remote_src: yes
+  no_log: true
+
+- name: Create hard link
+  ansible.builtin.file:
+    # src: /home/CXAdmin/dialogic_xms_{{ hostvars['localhost']['xms_version'] }}.c7 
+    # dest: /home/CXAdmin/ms
+    src: /opt/xms_install/dialogic_xms_{{ lookup('env','xms_version') }}.c7 
+    dest: /home/CXAdmin/ms
+    state: link
+
+- name: Copy DTMF binaries
+  ansible.builtin.copy:
+    # src: "{{ playbook_dir }}/DTMF.zip"
+    # dest: /datadrive/xms_install/DTMF.zip
+    src: "/opt/xms_install//DTMF.zip"
+    dest: /opt/xms_install/
+    remote_src: yes
+  no_log: true

@@ -1,0 +1,31 @@
+- name: Find VMs
+  azure_rm_virtualmachine_info:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+  register: vm_list
+
+- name: Parse VM List
+  ansible.builtin.debug:
+    var: item
+  loop: "{{ vm_list | to_json | from_json | json_query(vm_name_query) }}"
+  vars:
+    vm_name_query: "vms[?ends_with(name,'radar-{{ lookup('env', 'ENVIRONMENT') }}')].name"
+  register: nectar_vm_name
+  no_log: true
+
+- name: Set VM fact 
+  set_fact:
+    nectar_vm: "{{ nectar_vm_name.results[0].item }}"
+  no_log: true
+
+# - name: Backup Files
+
+- name: Stop Nectar Radar VM
+  azure_rm_virtualmachine:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "{{ nectar_vm }}"
+    started: false
+    tags: "{{ ta_tags|combine({'Persistence': 'Ignore','applicationRole': 'nectar', 'applicationFunction': 'decommission'}) }}"
+    append_tags: false
+  vars:
+    current_nectar: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+  when: nectar_vm != current_nectar

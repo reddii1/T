@@ -1,0 +1,27 @@
+---
+- hosts: localhost
+  collections:
+    - azure.azcollection
+
+  roles:
+    - xms_facts
+
+- hosts: xms
+  become: true
+  
+  tasks:
+  - name: XMS install prerequisites
+    include_role:
+      name: xms_prerequisites
+
+  - name: Get XMS installer
+    include_role:
+      name: xms_get_installer
+
+  - name: Install XMS
+    include_role:
+      name: xms_install
+
+  - name: Post Install XMS
+    include_role:
+      name: xms_post_install
