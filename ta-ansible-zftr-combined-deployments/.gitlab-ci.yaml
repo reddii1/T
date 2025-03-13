@@ -1,0 +1,126 @@
+default:
+  tags:
+    - dw-ccc-devt
+
+image:
+   name: registry.gitlab.com/dwp/digital-channels-contact/contact2/prerequisites/ansible-runner:latest@sha256:d19661e4549ffd37ab8dc21dd6923858430a1838e8c99d39447e84e751659f19
+
+stages:
+ - test
+#  - run-playbook
+#  - run-playbook-mongodb
+#  - run-playbook-xms
+#  - run-playbook-nuance
+ - deploy-nectar
+
+variables:
+  # Software versions
+  xms_version: 5.0.32977-14
+  amazon_corretto_version: "11.0.20.9.1" # "11.0.22.7.1" Nectar CX 2024.1.0.1
+  liferay_version: "7.4.3.78-ga78"
+  tomcat_version: "9.0.73"
+  elasticsearch_version: "7.17.10"
+
+  # Change to target multi-env
+  environment_type: devt
+
+  # Depend on target environment
+  azure_subscription: dw-ccc-$environment_type 
+  azure_resource_group: rg-uks-$environment_type-dw-ccc-test-automation 
+  azure_vault_uri: https://kv-uks-$environment_type-dw-ccc-ta.vault.azure.net/
+  azure_key_vault: kv-uks-$environment_type-dw-ccc-ta
+  azure_dns_zone_name: dw-ccc-$environment_type.np.az.dwpcloud.uk
+
+  # Ansible dynamic inventory
+  ANSIBLE_AZURE_VM_RESOURCE_GROUPS: $azure_resource_group
+
+  # Prefill Variables
+  ENVIRONMENT:
+    value: "dev"
+    options:
+      - "dev"
+      - "live"
+    description: "Dev is default"
+    
+  STATE:
+    value: "present"
+    options:
+      - "present"
+      - "absent"
+    description: "Create applications infrastructure, set 'absent' to delete"
+  
+  nectar_cx_version: 
+    value: "2024.2.1"
+    options:
+      - "2024.2.1"
+      - "2024.1.0.1"
+      - "2023.3.1"
+    description: "Available Versions"
+  
+before_script:
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 700 ~/.ssh/id_rsa
+    - eval $(ssh-agent -s)
+    - ssh-add ~/.ssh/id_rsa
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - chmod 600 ~/.ssh/*
+    - echo "Initiating Ansible playbook"
+    - az login --service-principal -u $AZURE_SP_ID -p $AZURE_SP_PASSWORD --tenant $AZURE_TENANT
+    - az account set --subscription $azure_subscription
+    - pwd
+    - chmod 740 ../ta-ansible
+
+sast:
+  stage: test
+include:
+- template: Security/SAST.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
+- template: Jobs/SAST-IaC.gitlab-ci.yml
+
+# run-playbook:
+#   stage: run-playbook
+#   script:
+#     # Deploy Azure infractructure
+#     - ansible-playbook -vvvv playbook.yml
+#     # Show Ansible Inventory
+#     - ansible-inventory -i azure_rm.yml --graph
+#   when: manual
+#   manual_confirmation: 'Deploying $ENVIRONMENT, continue?'
+
+# run-playbook-mongodb:
+#   stage: run-playbook-mongodb
+#   script:
+#     - ansible-playbook playbook_mongodb.yml
+#   when: manual
+
+# run-playbook-xms:
+#   stage: run-playbook-xms
+#   script:
+#     - ansible-playbook playbook_xms.yml
+#   when: manual
+
+# run-playbook-nuance:
+#   stage: run-playbook-nuance
+#   script:
+#     # Get WinRM Certs
+#     - winrm_pub=$(az keyvault secret show --name "winrm-self-signed-public-cert" --vault-name $azure_key_vault --query value -o tsv)
+#     - echo -e $winrm_pub > cert.pem
+#     - winrm_priv=$(az keyvault secret show --name "winrm-self-signed-private-key" --vault-name $azure_key_vault --query value -o tsv) 
+#     - echo -e $winrm_priv > certkey.pem
+#     # Nuance Installation and Configuration
+#     - ansible-playbook playbook_nuance.yml
+#   when: manual   
+
+deploy-nectar:
+  stage: deploy-nectar
+  script:
+    # Get WinRM Certs
+    - winrm_pub=$(az keyvault secret show --name "winrm-self-signed-public-cert" --vault-name $azure_key_vault --query value -o tsv)
+    - echo -e $winrm_pub > cert.pem
+    - winrm_priv=$(az keyvault secret show --name "winrm-self-signed-private-key" --vault-name $azure_key_vault --query value -o tsv) 
+    - echo -e $winrm_priv > certkey.pem
+    # Show Ansible Inventory
+    - ansible-inventory -i azure_rm.yml --graph
+    # Deploy Nectar
+    - ansible-playbook playbook_nectar.yml
