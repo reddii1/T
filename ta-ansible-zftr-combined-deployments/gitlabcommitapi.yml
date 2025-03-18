@@ -1,0 +1,209 @@
+- name: Find VMs
+  azure_rm_virtualmachine_info:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+  register: vm_list
+
+- name: Parse VM List
+  ansible.builtin.debug:
+    var: item
+  loop: "{{ vm_list | to_json | from_json | json_query(vm_name_query) }}"
+  vars:
+    vm_name_query: "vms[?ends_with(name,'radar-{{ lookup('env', 'ENVIRONMENT') }}')].name"
+  register: nectar_vm_name
+  no_log: true
+
+- name: Set VM fact 
+  set_fact:
+    nectar_vm: "{{ nectar_vm_name.results[0].item }}"
+  no_log: true
+
+- name: Create GitLab commit with VM shutdown info
+  uri:
+    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+    method: POST
+    headers:
+      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: 
+      branch: "{{ gitlab_branch | default('main') }}"
+      commit_message: "VM Shutdown: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
+      actions:
+        - action: "update"
+          file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
+          content: |
+            VM Shutdown Log
+            --------------
+            VM Name: {{ nectar_vm }}
+            Resource Group: {{ lookup('env','azure_resource_group') }}
+            Environment: {{ lookup('env','ENVIRONMENT') }}
+            Date: {{ ansible_date_time.iso8601 }}
+            Status: Initiated
+    status_code: 201
+  register: gitlab_commit
+  when: nectar_vm is defined
+
+- name: Stop Nectar Radar VM
+  azure_rm_virtualmachine:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "{{ nectar_vm }}"
+    started: false
+    tags: "{{ ta_tags|combine({'Persistence': 'Ignore','applicationRole': 'nectar', 'applicationFunction': 'decommission'}) }}"
+    append_tags: false
+  vars:
+    current_nectar: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+  when: 
+    - nectar_vm != current_nectar
+    - gitlab_commit.status == 201
+  register: vm_shutdown_result
+
+- name: Update GitLab commit with shutdown result
+  uri:
+    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+    method: POST
+    headers:
+      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      branch: "{{ gitlab_branch | default('main') }}"
+      commit_message: "VM Shutdown Complete: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
+      actions:
+        - action: "update"
+          file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
+          content: |
+            VM Shutdown Log
+            --------------
+            VM Name: {{ nectar_vm }}
+            Resource Group: {{ lookup('env','azure_resource_group') }}
+            Environment: {{ lookup('env','ENVIRONMENT') }}
+            Date: {{ ansible_date_time.iso8601 }}
+            Status: {{ 'Completed' if vm_shutdown_result.changed else 'Failed' }}
+            Details: {{ vm_shutdown_result.msg | default('No additional details') }}
+    status_code: 201
+  when: 
+    - gitlab_commit.status == 201
+    - vm_shutdown_result is defined
+
+#I’ll modify the previous code to use the GitLab Commits API instead of the Issues API. The Commits API will allow us to create a commit in a specified repository with information about the VM shutdown process. Here’s the updated playbook:
+- name: Find VMs
+  azure_rm_virtualmachine_info:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+  register: vm_list
+
+- name: Parse VM List
+  ansible.builtin.debug:
+    var: item
+  loop: "{{ vm_list | to_json | from_json | json_query(vm_name_query) }}"
+  vars:
+    vm_name_query: "vms[?ends_with(name,'radar-{{ lookup('env', 'ENVIRONMENT') }}')].name"
+  register: nectar_vm_name
+  no_log: true
+
+- name: Set VM fact 
+  set_fact:
+    nectar_vm: "{{ nectar_vm_name.results[0].item }}"
+  no_log: true
+
+- name: Create GitLab commit with VM shutdown info
+  uri:
+    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+    method: POST
+    headers:
+      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: 
+      branch: "{{ gitlab_branch | default('main') }}"
+      commit_message: "VM Shutdown: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
+      actions:
+        - action: "update"
+          file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
+          content: |
+            VM Shutdown Log
+            --------------
+            VM Name: {{ nectar_vm }}
+            Resource Group: {{ lookup('env','azure_resource_group') }}
+            Environment: {{ lookup('env','ENVIRONMENT') }}
+            Date: {{ ansible_date_time.iso8601 }}
+            Status: Initiated
+    status_code: 201
+  register: gitlab_commit
+  when: nectar_vm is defined
+
+- name: Stop Nectar Radar VM
+  azure_rm_virtualmachine:
+    resource_group: "{{ lookup('env','azure_resource_group') }}"
+    name: "{{ nectar_vm }}"
+    started: false
+    tags: "{{ ta_tags|combine({'Persistence': 'Ignore','applicationRole': 'nectar', 'applicationFunction': 'decommission'}) }}"
+    append_tags: false
+  vars:
+    current_nectar: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+  when: 
+    - nectar_vm != current_nectar
+    - gitlab_commit.status == 201
+  register: vm_shutdown_result
+
+- name: Update GitLab commit with shutdown result
+  uri:
+    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+    method: POST
+    headers:
+      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      branch: "{{ gitlab_branch | default('main') }}"
+      commit_message: "VM Shutdown Complete: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
+      actions:
+        - action: "update"
+          file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
+          content: |
+            VM Shutdown Log
+            --------------
+            VM Name: {{ nectar_vm }}
+            Resource Group: {{ lookup('env','azure_resource_group') }}
+            Environment: {{ lookup('env','ENVIRONMENT') }}
+            Date: {{ ansible_date_time.iso8601 }}
+            Status: {{ 'Completed' if vm_shutdown_result.changed else 'Failed' }}
+            Details: {{ vm_shutdown_result.msg | default('No additional details') }}
+    status_code: 201
+  when: 
+    - gitlab_commit.status == 201
+    - vm_shutdown_result is defined
+Changes and Explanation:
+Environment Variables Needed:
+	•	GITLAB_TOKEN: GitLab personal access token with API scope
+	•	gitlab_project_id: GitLab project ID (numeric)
+	•	gitlab_branch: Optional branch name (defaults to ‘main’)
+New Functionality:
+	1	Create GitLab Commit
+	◦	Creates a new commit in the specified repository
+	◦	Creates/updates a log file in vm_shutdowns/[date]/[vm_name].log
+	◦	Initial commit message shows shutdown initiation
+	◦	File path includes date for organization
+	◦	Uses the Commits API endpoint: /projects/:id/repository/commits
+	2	Update GitLab Commit
+	◦	Creates a follow-up commit
+	◦	Updates the same log file with completion status
+	◦	Shows success/failure based on vm_shutdown_result.changed
+	◦	Includes detailed shutdown information
+Key Features:
+	•	Creates a versioned history of VM shutdowns
+	•	Organizes logs by date and VM name
+	•	Maintains a git history of all shutdown operations
+	•	Uses the “update” action to modify existing files or create new ones
+Prerequisites:
+	•	GitLab repository must exist
+	•	Personal access token needs api and write_repository scopes
+	•	Target branch must exist
+	•	Directory structure will be created automatically
+Benefits:
+	•	Permanent record in git history
+	•	Version control of shutdown logs
+	•	Easy to browse history via GitLab UI
+	•	Can be integrated with CI/CD pipelines
+The main difference from the Issues API approach is that this creates a file-based log system in the repository rather than issue tickets, providing a more structured and version-controlled way to track VM shutdowns. Each shutdown operation results in two commits: one for initiation and one for completion status.
+
+
