@@ -1,0 +1,8 @@
+Test cases interactions prompts are stored in .csv files under F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\test-case-data
+As these files are often updated they should be versioned controlled to keep track of changes
+Possibly, they can be pushed to a branch of ta-nectar-backup project on Gitlab using its REST API from the running instance of Nectar, before a new version is deployed, as part of the pipeline
+There could be 2 project branches, test-case-data-dev and test-case-data-live.
+The commit message could include the Nectar version the backup is sent from
+The .csv can then be pulled via API to restore them in newly deployed Nectar CX instances
+
+Currently .csv files are zipped and manually uploaded via curl command to the Package Registry, before running the deployment pipeline,and then downloaded onto the new instance 
