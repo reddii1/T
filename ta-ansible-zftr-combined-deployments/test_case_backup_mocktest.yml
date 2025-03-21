@@ -1,169 +1,182 @@
-- name: Find VMs
-  block:
-    - name: Mock VM list for testing
+---
+- name: Nectar VM Management and Test Case Backup
+  hosts: localhost
+  tasks:
+    - name: Find VMs
+      block:
+        - name: Mock VM list for testing
+          set_fact:
+            vm_list: {"vms": [{"name": "test-radar-dev"}]}
+          when: lookup('env', 'azure_resource_group') == "test-rg"
+          register: mock_result
+
+        - name: Fetch real VM list from Azure
+          azure_rm_virtualmachine_info:
+            resource_group: "{{ lookup('env','azure_resource_group') }}"
+          register: vm_list
+          when: lookup('env', 'azure_resource_group') != "test-rg"
+
+      # Handle the result outside the block
+      - name: Set vm_list fact if mocked
+        set_fact:
+          vm_list: "{{ mock_result.ansible_facts.vm_list }}"
+        when: 
+          - mock_result is defined
+          - mock_result.changed
+      tags: azure
+
+    - name: Parse VM List
+      ansible.builtin.debug:
+        var: item
+      loop: "{{ vm_list | to_json | from_json | json_query(vm_name_query) }}"
+      vars:
+        vm_name_query: "vms[?ends_with(name,'radar-{{ lookup('env', 'ENVIRONMENT') }}')].name"
+      register: nectar_vm_name
+      no_log: true
+
+    - name: Set VM fact 
       set_fact:
-        vm_list: {"vms": [{"name": "test-radar-dev"}]}
-      when: azure_resource_group == "test-rg"
-    - name: Fetch real VM list from Azure
-      azure_rm_virtualmachine_info:
+        nectar_vm: "{{ nectar_vm_name.results[0].item }}"
+        nectar_version: "{{ lookup('env', 'nectar_cx_version') }}"
+        test_case_path: "{{ lookup('env', 'TEST_CASE_PATH') | default('/tmp/test-case-data', true) }}"
+      no_log: true
+
+    - name: Determine target branch based on environment
+      set_fact:
+        target_branch: "{{ 'test-case-data-dev' if lookup('env', 'ENVIRONMENT') == 'dev' else 'test-case-data-live' }}"
+
+    - name: Read test case CSV files
+      win_find:
+        paths: "{{ test_case_path }}"
+        patterns: "*.csv"
+      register: csv_files
+      when: nectar_vm is defined
+
+    - name: Create GitLab commit with test case CSV files
+      uri:
+        url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+        method: POST
+        headers:
+          Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body: 
+          branch: "{{ target_branch }}"
+          commit_message: "Test case backup from Nectar v{{ nectar_version }} - {{ ansible_date_time.iso8601 }}"
+          actions: "{{ csv_file_actions }}"
+      vars:
+        csv_file_actions: >
+          {{
+            csv_files.files | map('extract', {
+              'action': 'update',
+              'file_path': 'test-case-data/' ~ item.path | basename,
+              'content': lookup('file', item.path) | b64encode,
+              'encoding': 'base64'
+            }) | list
+          }}
+      register: gitlab_testcase_commit
+      when: 
+        - csv_files.files is defined
+        - csv_files.files | length > 0
+      tags: gitlab
+
+    - name: Create GitLab commit with VM shutdown info
+      uri:
+        url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+        method: POST
+        headers:
+          Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body: 
+          branch: "{{ gitlab_branch | default('main') }}"
+          commit_message: "VM Shutdown: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
+          actions:
+            - action: "update"
+              file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
+              content: |
+                VM Shutdown Log
+                --------------
+                VM Name: {{ nectar_vm }}
+                Resource Group: {{ lookup('env','azure_resource_group') }}
+                Environment: {{ lookup('env','ENVIRONMENT') }}
+                Test Cases Commit: {{ gitlab_testcase_commit.json.id | default('N/A') }}
+                Date: {{ ansible_date_time.iso8601 }}
+                Status: Initiated
+        status_code: 201
+      register: gitlab_commit
+      when: 
+        - nectar_vm is defined
+        - gitlab_testcase_commit.status is defined
+        - gitlab_testcase_commit.status == 201
+      tags: gitlab
+
+    - name: Stop Nectar Radar VM
+      azure_rm_virtualmachine:
         resource_group: "{{ lookup('env','azure_resource_group') }}"
-      register: vm_list
-      when: azure_resource_group != "test-rg"
-  register: vm_list
-  tags: azure
+        name: "{{ nectar_vm }}"
+        started: false
+        tags: "{{ ta_tags|combine({'Persistence': 'Ignore','applicationRole': 'nectar', 'applicationFunction': 'decommission'}) }}"
+        append_tags: false
+      vars:
+        current_nectar: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
+      when: 
+        - nectar_vm != current_nectar
+        - gitlab_commit.status == 201
+      register: vm_shutdown_result
+      tags: azure
 
-- name: Parse VM List
-  ansible.builtin.debug:
-    var: item
-  loop: "{{ vm_list | to_json | from_json | json_query(vm_name_query) }}"
-  vars:
-    vm_name_query: "vms[?ends_with(name,'radar-{{ lookup('env', 'ENVIRONMENT') }}')].name"
-  register: nectar_vm_name
-  no_log: true
+    - name: Update GitLab commit with shutdown result
+      uri:
+        url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
+        method: POST
+        headers:
+          Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          branch: "{{ gitlab_branch | default('main') }}"
+          commit_message: "VM Shutdown Complete: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
+          actions:
+            - action: "update"
+              file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
+              content: |
+                VM Shutdown Log
+                --------------
+                VM Name: {{ nectar_vm }}
+                Resource Group: {{ lookup('env','azure_resource_group') }}
+                Environment: {{ lookup('env','ENVIRONMENT') }}
+                Test Cases Commit: {{ gitlab_testcase_commit.json.id | default('N/A') }}
+                Date: {{ ansible_date_time.iso8601 }}
+                Status: {{ 'Completed' if vm_shutdown_result.changed else 'Failed' }}
+                Details: {{ vm_shutdown_result.msg | default('No additional details') }}
+        status_code: 201
+      when: 
+        - gitlab_commit.status == 201
+        - vm_shutdown_result is defined
+      tags: gitlab
 
-- name: Set VM fact 
-  set_fact:
-    nectar_vm: "{{ nectar_vm_name.results[0].item }}"
-    nectar_version: "{{ lookup('env', 'nectar_cx_version') }}"
-    test_case_path: "{{ lookup('env', 'TEST_CASE_PATH') | default('/tmp/test-case-data', true) }}"
-  no_log: true
+    - name: Restore test cases for new deployment
+      uri:
+        url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/tree?ref={{ target_branch }}&path=test-case-data"
+        method: GET
+        headers:
+          Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+        return_content: yes
+      register: test_case_files
+      when: 
+        - gitlab_testcase_commit.status == 201
+        - "'deploy' in ansible_run_tags | default([])"
+      tags: gitlab
 
-- name: Determine target branch based on environment
-  set_fact:
-    target_branch: "{{ 'test-case-data-dev' if lookup('env', 'ENVIRONMENT') == 'dev' else 'test-case-data-live' }}"
-
-- name: Read test case CSV files
-  win_find:
-    paths: "{{ test_case_path }}"
-    patterns: "*.csv"
-  register: csv_files
-  when: nectar_vm is defined
-
-- name: Create GitLab commit with test case CSV files
-  uri:
-    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
-    method: POST
-    headers:
-      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-      Content-Type: "application/json"
-    body_format: json
-    body: 
-      branch: "{{ target_branch }}"
-      commit_message: "Test case backup from Nectar v{{ nectar_version }} - {{ ansible_date_time.iso8601 }}"
-      actions: "{{ csv_file_actions }}"
-  vars:
-    csv_file_actions: >
-      {{
-        csv_files.files | map('extract', {
-          'action': 'update',
-          'file_path': 'test-case-data/' ~ item.path | basename,
-          'content': lookup('file', item.path) | b64encode,
-          'encoding': 'base64'
-        }) | list
-      }}
-  register: gitlab_testcase_commit
-  when: 
-    - csv_files.files is defined
-    - csv_files.files | length > 0
-  tags: gitlab
-
-- name: Create GitLab commit with VM shutdown info
-  uri:
-    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
-    method: POST
-    headers:
-      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-      Content-Type: "application/json"
-    body_format: json
-    body: 
-      branch: "{{ gitlab_branch | default('main') }}"
-      commit_message: "VM Shutdown: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
-      actions:
-        - action: "update"
-          file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
-          content: |
-            VM Shutdown Log
-            --------------
-            VM Name: {{ nectar_vm }}
-            Resource Group: {{ lookup('env','azure_resource_group') }}
-            Environment: {{ lookup('env','ENVIRONMENT') }}
-            Test Cases Commit: {{ gitlab_testcase_commit.json.id | default('N/A') }}
-            Date: {{ ansible_date_time.iso8601 }}
-            Status: Initiated
-    status_code: 201
-  register: gitlab_commit
-  when: 
-    - nectar_vm is defined
-    - gitlab_testcase_commit.status is defined
-    - gitlab_testcase_commit.status == 201
-  tags: gitlab
-
-- name: Stop Nectar Radar VM
-  azure_rm_virtualmachine:
-    resource_group: "{{ lookup('env','azure_resource_group') }}"
-    name: "{{ nectar_vm }}"
-    started: false
-    tags: "{{ ta_tags|combine({'Persistence': 'Ignore','applicationRole': 'nectar', 'applicationFunction': 'decommission'}) }}"
-    append_tags: false
-  vars:
-    current_nectar: "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-{{ lookup('env','nectar_cx_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}"
-  when: 
-    - nectar_vm != current_nectar
-    - gitlab_commit.status == 201
-  register: vm_shutdown_result
-  tags: azure
-
-- name: Update GitLab commit with shutdown result
-  uri:
-    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/commits"
-    method: POST
-    headers:
-      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      branch: "{{ gitlab_branch | default('main') }}"
-      commit_message: "VM Shutdown Complete: {{ nectar_vm }} - {{ ansible_date_time.iso8601 }}"
-      actions:
-        - action: "update"
-          file_path: "vm_shutdowns/{{ ansible_date_time.date }}/{{ nectar_vm }}.log"
-          content: |
-            VM Shutdown Log
-            --------------
-            VM Name: {{ nectar_vm }}
-            Resource Group: {{ lookup('env','azure_resource_group') }}
-            Environment: {{ lookup('env','ENVIRONMENT') }}
-            Test Cases Commit: {{ gitlab_testcase_commit.json.id | default('N/A') }}
-            Date: {{ ansible_date_time.iso8601 }}
-            Status: {{ 'Completed' if vm_shutdown_result.changed else 'Failed' }}
-            Details: {{ vm_shutdown_result.msg | default('No additional details') }}
-    status_code: 201
-  when: 
-    - gitlab_commit.status == 201
-    - vm_shutdown_result is defined
-  tags: gitlab
-
-- name: Restore test cases for new deployment
-  uri:
-    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/tree?ref={{ target_branch }}&path=test-case-data"
-    method: GET
-    headers:
-      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-    return_content: yes
-  register: test_case_files
-  when: 
-    - gitlab_testcase_commit.status == 201
-    - "'deploy' in ansible_run_tags | default([])"
-  tags: gitlab
-
-- name: Download test case files
-  win_get_url:
-    url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/files/{{ item.path | urlencode }}/raw?ref={{ target_branch }}"
-    dest: "{{ test_case_path }}\\{{ item.name }}"
-    headers:
-      Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
-  loop: "{{ test_case_files.json }}"
-  when: 
-    - test_case_files.json is defined
-    - "'deploy' in ansible_run_tags | default([])"
-  tags: gitlab
+    - name: Download test case files
+      win_get_url:
+        url: "https://gitlab.com/api/v4/projects/{{ gitlab_project_id }}/repository/files/{{ item.path | urlencode }}/raw?ref={{ target_branch }}"
+        dest: "{{ test_case_path }}\\{{ item.name }}"
+        headers:
+          Private-Token: "{{ lookup('env', 'GITLAB_TOKEN') }}"
+      loop: "{{ test_case_files.json }}"
+      when: 
+        - test_case_files.json is defined
+        - "'deploy' in ansible_run_tags | default([])"
+      tags: gitlab
