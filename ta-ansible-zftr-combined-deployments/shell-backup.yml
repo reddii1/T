@@ -1,0 +1,218 @@
+Below, I’ll provide a PowerShell script equivalent to the Bash script for interacting with the GitLab API, an updated Ansible task to invoke it, a detailed explanation, and guidance on testing the code. Since PowerShell is commonly used in Windows environments (and your CSV files are stored on an F:\ drive, suggesting Windows), it’s a natural fit for this task.
+
+Ansible Task
+Here’s the updated Ansible task to invoke a PowerShell script instead of Bash:
+- name: Backup test case CSV files to GitLab repository
+  ansible.builtin.shell: |
+    powershell -ExecutionPolicy Bypass -File "C:\Scripts\Backup-TestCasesToGitLab.ps1" `
+      -GitLabToken "{{ lookup('env', 'gitlab_token') }}" `
+      -NectarVersion "{{ lookup('env', 'nectar_cx_version') }}" `
+      -EnvironmentType "{{ lookup('env', 'environment_type') }}"
+  args:
+    executable: cmd  # Use cmd.exe to invoke PowerShell
+  environment:
+    CSV_DIR: "F:\\Nectar\\CXA\\liferay-ce-portal-7.4.3.78-ga78\\test-case-data"
+    GITLAB_PROJECT_ID: "12345"  # Replace with the actual ta-nectar-backup project ID
+  ignore_errors: yes
+  register: backup_result
+  changed_when: "'Successfully committed' in backup_result.stdout"
+Explanation
+	•	ansible.builtin.shell: Runs a PowerShell script via cmd.exe (Ansible on Windows often uses cmd as the shell).
+	•	PowerShell Command:
+	◦	-ExecutionPolicy Bypass: Allows the script to run even if the system’s execution policy restricts unsigned scripts.
+	◦	-File: Specifies the path to the PowerShell script (adjust C:\Scripts\ to your actual path).
+	◦	Parameters (-GitLabToken, -NectarVersion, -EnvironmentType) are passed dynamically from environment variables.
+	•	environment: Sets variables for the script to use (same as before).
+	•	register: Captures the script’s output in the backup_result variable for debugging or validation.
+	•	changed_when: Marks the task as “changed” only if the script outputs a success message, improving idempotency tracking.
+
+PowerShell Script (`Backup-TestCasesToGitLab.ps1`)
+Here’s the PowerShell script to commit CSV files to GitLab:
+param (
+    [Parameter(Mandatory = $true)]
+    [string]$GitLabToken,
+
+    [Parameter(Mandatory = $true)]
+    [string]$NectarVersion,
+
+    [Parameter(Mandatory = $true)]
+    [string]$EnvironmentType
+)
+
+# Constants
+$GitLabApi = "https://gitlab.com/api/v4"
+$ProjectId = $env:GITLAB_PROJECT_ID
+$CsvDir = $env:CSV_DIR
+
+# Determine target branch
+$Branch = switch ($EnvironmentType) {
+    "dev" { "test-case-data-dev" }
+    "live" { "test-case-data-live" }
+    default { 
+        Write-Error "Invalid environment type '$EnvironmentType'. Use 'dev' or 'live'."
+        exit 1
+    }
+}
+
+# Commit message
+$CommitMessage = "Backup test case data from Nectar CX $NectarVersion"
+
+# Check if CSV directory exists
+if (-not (Test-Path $CsvDir)) {
+    Write-Error "CSV directory '$CsvDir' does not exist."
+    exit 1
+}
+
+# Headers for GitLab API
+$Headers = @{
+    "PRIVATE-TOKEN" = $GitLabToken
+    "Content-Type"  = "application/json"
+}
+
+# Get all CSV files
+$CsvFiles = Get-ChildItem -Path "$CsvDir\*.csv" -File
+
+if ($CsvFiles.Count -eq 0) {
+    Write-Output "No CSV files found in '$CsvDir'."
+    exit 0
+}
+
+foreach ($file in $CsvFiles) {
+    $FileName = $file.Name
+    $FilePath = $file.FullName
+
+    # Encode file content as base64
+    $FileContent = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($FilePath))
+
+    # API URL for the file
+    $ApiUrl = "$GitLabApi/projects/$ProjectId/repository/files/$([uri]::EscapeDataString($FileName))"
+
+    # Check if file exists in the branch
+    $FileExists = try {
+        Invoke-RestMethod -Uri "$ApiUrl`?ref=$Branch" -Headers $Headers -Method Get -ErrorAction Stop
+        $true
+    } catch {
+        if ($_.Exception.Response.StatusCode -eq 404) { $false } else { throw }
+    }
+
+    # Prepare API payload
+    $Payload = @{
+        branch        = $Branch
+        content       = $FileContent
+        commit_message = $CommitMessage
+    } | ConvertTo-Json
+
+    # Create or update file
+    try {
+        if ($FileExists) {
+            Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Put -Body $Payload -ErrorAction Stop
+        } else {
+            Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -Method Post -Body $Payload -ErrorAction Stop
+        }
+        Write-Output "Successfully committed $FileName to $Branch"
+    } catch {
+        Write-Error "Failed to commit $FileName to $Branch`: $($_.Exception.Message)"
+    }
+}
+
+Write-Output "Backup process completed."
+Detailed Explanation
+	1	Parameters:
+	◦	$GitLabToken: GitLab personal access token for authentication.
+	◦	$NectarVersion: Nectar CX version for the commit message.
+	◦	$EnvironmentType: Determines the target branch (dev or live).
+	2	Constants:
+	◦	$GitLabApi: Base URL for GitLab’s REST API.
+	◦	$ProjectId and $CsvDir: Retrieved from environment variables set by Ansible.
+	◦	$Branch: Uses a switch statement to map EnvironmentType to the appropriate branch.
+	3	Validation:
+	◦	Checks if the CSV directory exists using Test-Path.
+	◦	Exits with a success code (0) if no CSV files are found.
+	4	API Interaction:
+	◦	$Headers: Sets the authentication token and content type for API requests.
+	◦	$CsvFiles: Retrieves all .csv files using Get-ChildItem.
+	◦	For each file:
+	▪	Encodes content as base64 (required by GitLab API).
+	▪	Escapes the filename for the URL using [uri]::EscapeDataString.
+	▪	Checks if the file exists with a GET request (404 means it doesn’t).
+	▪	Uses PUT to update or POST to create the file with Invoke-RestMethod.
+	5	Error Handling:
+	◦	Wraps API calls in try/catch blocks to handle failures gracefully.
+	◦	Outputs success or error messages for each file.
+
+Testing the Code
+Prerequisites
+	1	GitLab Setup:
+	◦	Ensure the ta-nectar-backup project exists on GitLab with branches test-case-data-dev and test-case-data-live.
+	◦	Get the project ID (found in the project’s settings on GitLab).
+	◦	Create a personal access token with api scope.
+	2	Environment:
+	◦	A Windows machine with PowerShell and Ansible installed.
+	◦	The CSV directory (F:\Nectar\...) with some test .csv files.
+	3	Environment Variables:
+	◦	Set gitlab_token, nectar_cx_version, and environment_type in your environment or CI/CD pipeline.
+Manual Testing
+	1	Prepare Test Files:
+	◦	Create a few sample CSV files in F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\test-case-data, e.g., test1.csv, test2.csv.
+	2	Set Environment Variables: $env:GITLAB_PROJECT_ID = "12345"  # Replace with your project ID
+	3	$env:CSV_DIR = "F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\test-case-data"
+	4	
+	5	Run the Script: .\Backup-TestCasesToGitLab.ps1 -GitLabToken "your-token" -NectarVersion "v1.2.3" -EnvironmentType "dev"
+	6	
+	◦	Expected Output (if successful): Successfully committed test1.csv to test-case-data-dev
+	◦	Successfully committed test2.csv to test-case-data-dev
+	◦	Backup process completed.
+	◦	
+	◦	Check GitLab to verify the files are committed to the test-case-data-dev branch.
+	7	Test Error Cases:
+	◦	Invalid token: Use a wrong token and expect an authentication error.
+	◦	Non-existent directory: Change $env:CSV_DIR to a bad path and expect an error.
+	◦	Invalid environment: Use -EnvironmentType "bad" and expect an error.
+Ansible Testing
+	1	Save the Playbook:
+	◦	Create a file (e.g., backup.yml) with the Ansible task.
+	2	Set Environment Variables:
+	◦	In your terminal or CI/CD environment: $env:gitlab_token = "your-token"
+	◦	$env:nectar_cx_version = "v1.2.3"
+	◦	$env:environment_type = "dev"
+	◦	
+	3	Run the Playbook: ansible-playbook backup.yml
+	4	
+	◦	Check the output for success messages or errors.
+	◦	Verify the files in GitLab.
+	5	Idempotency:
+	◦	Run the playbook again. It should succeed without errors, and GitLab should show updated commits only if the files changed.
+Automated Testing in CI/CD
+	•	Add the Ansible task to your GitLab CI/CD pipeline (e.g., in .gitlab-ci.yml): backup_test_cases:
+	•	  stage: backup
+	•	  script:
+	•	    - ansible-playbook backup.yml
+	•	  variables:
+	•	    gitlab_token: $GITLAB_TOKEN
+	•	    nectar_cx_version: $CI_COMMIT_TAG  # e.g., v1.2.3
+	•	    environment_type: "dev"
+	•	
+	•	Trigger the pipeline and monitor the job logs.
+
+Full Detailed Explanation
+Why PowerShell?
+	•	Your CSV files are on a Windows path (F:\), and PowerShell is native to Windows, making it ideal for file handling and API calls in this context.
+	•	It integrates well with Ansible on Windows hosts or control nodes.
+How It Works
+	1	Ansible:
+	◦	Orchestrates the process by invoking the script with dynamic parameters.
+	◦	Captures output for validation and continues on failure (ignore_errors).
+	2	PowerShell:
+	◦	Validates inputs and environment.
+	◦	Uses REST API calls to commit files to GitLab, handling both new and existing files.
+	◦	Provides detailed feedback for debugging.
+	3	GitLab API:
+	◦	GET: Checks file existence.
+	◦	POST: Creates new files.
+	◦	PUT: Updates existing files.
+	◦	Payload includes branch, content (base64), and commit message.
+Security Considerations
+	•	Store the GitLab token securely (e.g., as a CI/CD variable).
+	•	Ensure the script runs with least privilege (e.g., a token with only api scope).
+
+Let me know if you need help testing specific scenarios or integrating this into your pipeline!
