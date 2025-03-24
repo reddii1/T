@@ -1,0 +1,205 @@
+Below, I’ll create an Ansible role to restore the backed-up CSV files from the GitLab repository to the same location on the VM (F:\Nectar\CXA\liferay-ce-portal-7.4.3.78-ga78\test-case-data). The role will use PowerShell to interact with the GitLab API, download the files from the appropriate branch (test-case-data-dev or test-case-data-live), and place them in the target directory. I’ll also provide a detailed explanation.
+
+Ansible Role Structure
+An Ansible role organizes tasks, scripts, and variables into a reusable structure. Here’s the structure for the restore_test_cases role:
+roles/
+  restore_test_cases/
+    tasks/
+      main.yml
+    files/
+      Restore-TestCasesFromGitLab.ps1
+    defaults/
+      main.yml
+
+Role Files
+1. `tasks/main.yml`
+This defines the main task to restore the CSV files.
+- name: Ensure target directory exists
+  ansible.windows.win_file:
+    path: "{{ csv_dir }}"
+    state: directory
+  become: yes  # Run with elevated privileges if needed
+
+- name: Restore test case CSV files from GitLab repository
+  ansible.builtin.shell: |
+    powershell -ExecutionPolicy Bypass -File "{{ role_path }}/files/Restore-TestCasesFromGitLab.ps1" `
+      -GitLabToken "{{ gitlab_token }}" `
+      -EnvironmentType "{{ environment_type }}"
+  args:
+    executable: cmd
+  environment:
+    CSV_DIR: "{{ csv_dir }}"
+    GITLAB_PROJECT_ID: "{{ gitlab_project_id }}"
+  register: restore_result
+  changed_when: "'Downloaded' in restore_result.stdout"
+Explanation
+	•	Ensure Directory:
+	◦	Uses ansible.windows.win_file to create the target directory if it doesn’t exist.
+	◦	become: yes ensures elevated privileges (optional, depending on VM permissions).
+	•	Restore Task:
+	◦	Invokes the PowerShell script with the GitLab token and environment type.
+	◦	Passes CSV_DIR and GITLAB_PROJECT_ID as environment variables.
+	◦	Registers the output in restore_result and marks the task as “changed” if files are downloaded.
+2. `files/Restore-TestCasesFromGitLab.ps1`
+This PowerShell script retrieves CSV files from GitLab and saves them to the target directory.
+param (
+    [Parameter(Mandatory = $true)]
+    [string]$GitLabToken,
+
+    [Parameter(Mandatory = $true)]
+    [string]$EnvironmentType
+)
+
+# Constants
+$GitLabApi = "https://gitlab.com/api/v4"
+$ProjectId = $env:GITLAB_PROJECT_ID
+$CsvDir = $env:CSV_DIR
+
+# Determine target branch
+$Branch = switch ($EnvironmentType) {
+    "dev" { "test-case-data-dev" }
+    "live" { "test-case-data-live" }
+    default { 
+        Write-Error "Invalid environment type '$EnvironmentType'. Use 'dev' or 'live'."
+        exit 1
+    }
+}
+
+# Headers for GitLab API
+$Headers = @{
+    "PRIVATE-TOKEN" = $GitLabToken
+}
+
+# Get list of CSV files in the branch
+$FilesUrl = "$GitLabApi/projects/$ProjectId/repository/tree?ref=$Branch"
+try {
+    $Files = Invoke-RestMethod -Uri $FilesUrl -Headers $Headers -Method Get -ErrorAction Stop |
+             Where-Object { $_.name -like "*.csv" } |
+             Select-Object -Property name
+} catch {
+    Write-Error "Failed to list files in branch '$Branch': $($_.Exception.Message)"
+    exit 1
+}
+
+if (-not $Files) {
+    Write-Output "No CSV files found in branch '$Branch'."
+    exit 0
+}
+
+# Ensure CSV directory exists (redundant check, but safe)
+if (-not (Test-Path $CsvDir)) {
+    New-Item -Path $CsvDir -ItemType Directory -Force | Out-Null
+}
+
+# Download each CSV file
+foreach ($file in $Files) {
+    $FileName = $file.name
+    $FileUrl = "$GitLabApi/projects/$ProjectId/repository/files/$([uri]::EscapeDataString($FileName))/raw?ref=$Branch"
+    $OutputPath = Join-Path $CsvDir $FileName
+
+    try {
+        $Response = Invoke-RestMethod -Uri $FileUrl -Headers $Headers -Method Get -ErrorAction Stop
+        [System.IO.File]::WriteAllBytes($OutputPath, [Convert]::FromBase64String($Response))
+        Write-Output "Downloaded $FileName to $OutputPath"
+    } catch {
+        Write-Error "Failed to download $FileName: $($_.Exception.Message)"
+    }
+}
+
+Write-Output "Restore process completed."
+Explanation
+	•	Parameters: Accepts $GitLabToken and $EnvironmentType.
+	•	Branch Selection: Maps dev or live to the correct branch.
+	•	API Calls:
+	◦	Uses the Repository Tree API (/repository/tree) to list .csv files in the branch.
+	◦	Uses the Raw File API (/raw) to download each file’s base64-encoded content.
+	•	File Handling:
+	◦	Ensures the target directory exists.
+	◦	Decodes base64 content and writes it to the disk using [System.IO.File].
+	•	Error Handling: Reports failures for listing or downloading files.
+3. `defaults/main.yml`
+This defines default variables for the role.
+---
+csv_dir: "F:\\Nectar\\CXA\\liferay-ce-portal-7.4.3.78-ga78\\test-case-data"
+gitlab_project_id: "12345"  # Replace with your actual project ID
+gitlab_token: "{{ lookup('env', 'gitlab_token') }}"
+environment_type: "{{ lookup('env', 'environment_type') }}"
+Explanation
+	•	csv_dir: Default path for restoring CSV files (can be overridden).
+	•	gitlab_project_id: Default project ID (replace with your actual ID).
+	•	gitlab_token and environment_type: Dynamically sourced from environment variables unless overridden.
+
+Using the Role
+Create a playbook to use the role, e.g., restore.yml:
+- name: Restore test case CSV files to VM
+  hosts: windows_vm  # Target Windows VM
+  roles:
+    - restore_test_cases
+Run it with:
+ansible-playbook restore.yml
+
+Detailed Explanation
+Role Purpose
+	•	Objective: Restore CSV files from a GitLab branch to the original location on a Windows VM.
+	•	Context: This runs after a new Nectar CX instance is deployed, ensuring test case data is available.
+Task Breakdown
+	1	Directory Creation:
+	◦	Ensures F:\Nectar\... exists using a Windows-specific module.
+	2	File Restoration:
+	◦	Executes the PowerShell script to fetch and save CSV files.
+	◦	Uses environment variables for flexibility.
+PowerShell Script Breakdown
+	1	API Interaction:
+	◦	Lists files with /repository/tree and filters for .csv.
+	◦	Downloads raw content with /raw (base64-encoded by GitLab).
+	2	File Writing:
+	◦	Decodes base64 and writes binary data to disk, preserving file integrity.
+	3	Robustness:
+	◦	Handles missing files or branches gracefully.
+	◦	Creates the directory if Ansible’s task fails unexpectedly.
+Assumptions
+	•	The VM is Windows-based (due to the F:\ path).
+	•	Ansible runs from a control node with access to the VM.
+	•	GitLab token and environment type are set in the environment or playbook.
+
+Testing the Role
+Prerequisites
+	•	GitLab: Ensure CSV files are committed to test-case-data-dev or test-case-data-live (e.g., from the backup script).
+	•	VM: A Windows VM with Ansible connectivity.
+	•	Environment Variables: $env:gitlab_token = "your-token"
+	•	$env:environment_type = "dev"
+	•	
+Manual Testing
+	1	Prepare the VM:
+	◦	Remove or rename existing CSV files in F:\Nectar\... to test restoration.
+	2	Test the Script Standalone: .\Restore-TestCasesFromGitLab.ps1 -GitLabToken "your-token" -EnvironmentType "dev"
+	3	
+	◦	Expected Output: Downloaded test1.csv to F:\Nectar\...\test-case-data\test1.csv
+	◦	Downloaded test2.csv to F:\Nectar\...\test-case-data\test2.csv
+	◦	Restore process completed.
+	◦	
+	◦	Verify files appear in the directory.
+	4	Test the Role:
+	◦	Run the playbook: ansible-playbook restore.yml -i inventory.yml
+	◦	
+	◦	Check the VM for restored files.
+	◦	Run again to ensure idempotency (no unnecessary downloads).
+Edge Cases
+	•	Empty Branch: Script should exit cleanly with “No CSV files found.”
+	•	Invalid Token: Expect an authentication error.
+	•	Missing Directory: Directory should be created automatically.
+CI/CD Integration
+Add to your pipeline (e.g., .gitlab-ci.yml):
+restore_test_cases:
+  stage: deploy
+  script:
+    - ansible-playbook restore.yml -i inventory.yml
+  variables:
+    gitlab_token: $GITLAB_TOKEN
+    environment_type: "dev"
+
+Enhancements
+	•	Checksum Validation: Add a task to verify file integrity post-download.
+	•	Retries: Use Ansible’s retries and delay for transient API failures.
+	•	Permissions: Set specific file permissions with ansible.windows.win_acl.
+Let me know if you need further tweaks or testing assistance!
