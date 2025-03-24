@@ -1,0 +1,14 @@
+- name: Backup test case CSV files to GitLab repository
+  ansible.builtin.shell: |
+    powershell -ExecutionPolicy Bypass -File "C:\Scripts\Backup-TestCasesToGitLab.ps1" `
+      -GitLabToken "{{ lookup('env', 'gitlab_token') }}" `
+      -NectarVersion "{{ lookup('env', 'nectar_cx_version') }}" `
+      -EnvironmentType "{{ lookup('env', 'environment_type') }}"
+  args:
+    executable: cmd  # Use cmd.exe to invoke PowerShell
+  environment:
+    CSV_DIR: "F:\\Nectar\\CXA\\liferay-ce-portal-7.4.3.78-ga78\\test-case-data"
+    GITLAB_PROJECT_ID: "12345"  # Replace with the actual ta-nectar-backup project ID
+  ignore_errors: yes
+  register: backup_result
+  changed_when: "'Successfully committed' in backup_result.stdout"
