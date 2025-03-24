@@ -1,0 +1,20 @@
+- name: Run backup script remotely on Nectar Windows VM via Azure CLI
+ansible.builtin.shell: |
+az vm run-command invoke \
+--command-id 'RunPowerShellScript' \
+--resource-group "{{ lookup('env','azure_
+resource
+_group') }}" \
+--name "s-{{ lookup('env','environment_type') }}-dw-ccc-test-automation-nectar-
+{{ lookup('env','nectar_
+cx
+_version') }}-radar-{{ lookup('env','ENVIRONMENT') }}" \
+--scripts "C:\\scripts\\backup-test-case-data.ps1" `
+--parameters GitLabToken="{{ lookup('env','GITLAB_TOKEN') }}" `
+ProjectId="{{ lookup('env','GITLAB_
+PROJECT
+_ID') }}" `
+Environment="{{ lookup('env','ENVIRONMENT_TYPE') }}" `
+NectarVersion="{{ lookup('env','NECTAR_VERSION') }}"
+ignore_
+errors: no
