@@ -1,0 +1,25 @@
+from jinja2 import Template
+
+# Define the values to fill in the template
+data = {
+    "repo_url_var": "REPO_URL",
+    "commit_message_var": "COMMIT_MESSAGE",
+    "csv_dir_var": "CSV_DIR",
+    "token_var": "NECTAR_BACKUP_PAT",
+    "branch_var": "BRANCH",
+    "default_branch": "test-case-data-dev",
+    "project_id": "68365929"
+}
+
+# Read the template file
+with open("bac.ps1.j2", "r") as file:
+    template = Template(file.read())
+
+# Render the template with the data
+rendered_script = template.render(**data)
+
+# Save the rendered script
+with open("bac.ps1", "w") as file:
+    file.write(rendered_script)
+
+print("PowerShell script generated as bac.ps1")
