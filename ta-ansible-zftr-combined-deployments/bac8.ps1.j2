@@ -1,0 +1,76 @@
+{# Jinja2 Template for GitLab CSV Backup - Concise WinRM Style #}
+$ErrorActionPreference = "SilentlyContinue";
+
+# --- Config Variables (from Jinja2) ---
+$gitlab_base_url = "{{ gitlab_base_url | default('https://gitlab.com') }}"
+$gitlab_project_id = "{{ gitlab_project_id }}"
+$gitlab_private_token = "{{ gitlab_private_token }}"
+$gitlab_branch = "{{ gitlab_branch }}"
+$csv_directory = "{{ csv_directory }}"
+$version_tag = "{{ version_tag | default('') }}"
+$commit_message_format = "{{ commit_message_format | default('backup for {version} {date} [skip ci]') }}"
+
+# --- Derived Variables ---
+$current_date = Get-Date -Format 'yyyy-MM-dd'
+$commit_message = $commit_message_format -replace '{version}', $version_tag -replace '{date}', $current_date
+$api_commit_url = "$($gitlab_base_url)/api/v4/projects/$($gitlab_project_id)/repository/commits"
+$api_file_check_base_url = "$($gitlab_base_url)/api/v4/projects/$($gitlab_project_id)/repository/files/"
+
+try {
+    # Navigate to target directory (critical step)
+    Set-Location -Path $csv_directory -ErrorAction Stop
+
+    # Prepare actions array
+    $actions = @()
+
+    # Process each CSV file
+    Get-ChildItem -Path . -Filter "*.csv" | ForEach-Object {
+        $filePath = $_.Name
+        # Read file content directly; SilentlyContinue suppresses read errors
+        $fileContent = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($_.FullName))
+
+        # Check if file exists on GitLab to determine action
+        $encodedFilePath = [uri]::EscapeDataString($filePath)
+        $checkUrl = "$($api_file_check_base_url)$($encodedFilePath)?ref=$gitlab_branch"
+        $actionType = "create" # Assume create initially
+
+        try {
+            # Use -ErrorAction Stop; if it succeeds, change to update. If it fails (e.g., 404), action remains create.
+            $null = Invoke-RestMethod -Uri $checkUrl -Headers @{ "PRIVATE-TOKEN" = $gitlab_private_token } -Method Get -ErrorAction Stop
+            $actionType = "update"
+        } catch {
+            # Any error during check defaults to 'create' action type implicitly
+            # Further error handling is suppressed or caught by the outer block
+        }
+
+        # Add the action details
+        $actions += @{
+            action     = $actionType
+            file_path = $filePath
+            content    = $fileContent
+            encoding   = "text"
+        }
+    } # End ForEach-Object
+
+    # Proceed only if actions were generated
+    if ($actions.Count -gt 0) {
+        # Build the JSON payload for the commit
+        $payload = @{
+            branch         = $gitlab_branch
+            commit_message = $commit_message
+            actions        = $actions
+        } | ConvertTo-Json -Depth 10 -Compress
+
+        # Send the commit request via API
+        $null = Invoke-RestMethod -Uri $api_commit_url `
+                                   -Headers @{ "PRIVATE-TOKEN" = $gitlab_private_token } `
+                                   -Method Post `
+                                   -Body $payload `
+                                   -ContentType "application/json" `
+                                   -ErrorAction Stop
+    }
+} catch {
+    # Catch any terminating error from commands using -ErrorAction Stop
+    # Exit silently with success code 0, regardless of the error
+    exit 0
+}
