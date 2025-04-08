@@ -1,0 +1,6 @@
+- name: Download CSV backup archive from GitLab
+  ansible.windows.win_get_url:
+    url: "https://gitlab.com/api/v4/projects/43328313/packages/generic/nectar-cx/{{ lookup('env', 'nectar_cx_version') }}/test-case-data.zip"
+    headers:
+      PRIVATE-TOKEN: "{{ lookup('env', 'NECTAR_BACKUP_PAT') }}"
+    dest: "F:\\Nectar\\CXA\\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\\test-case-data.zip"
