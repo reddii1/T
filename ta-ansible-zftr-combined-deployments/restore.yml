@@ -4,3 +4,15 @@
     headers:
       PRIVATE-TOKEN: "{{ lookup('env', 'NECTAR_BACKUP_PAT') }}"
     dest: "F:\\Nectar\\CXA\\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\\test-case-data.zip"
+
+
+
+
+- name: Download Each CSV File from GitLab to VM
+  ansible.windows.win_get_url:
+    url: "https://{{ gitlab_ci_registry }}/api/v4/projects/{{ gitlab_project_id }}/repository/files/{{ item | replace('\\', '%2F') | replace('/', '%2F') }}/raw?ref={{ gitlab_branch }}"
+    dest: "{{ nectar_csv_dir }}\\{{ item | split('/') | last }}"
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_private_token }}"
+  loop: "{{ csv_files }}"
+  delegate_to: "{{ nectar_vm }}"
