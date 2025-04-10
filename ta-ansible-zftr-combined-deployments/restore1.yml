@@ -34,3 +34,18 @@
     msg: "Restored {{ item.item.name }} to {{ nectar_csv_dir }}"
   loop: "{{ download_result.results }}"
   when: item.changed
+
+
+
+
+
+defaut.yml
+---
+# Default variables
+gitlab_base_url: "{{ lookup('env', 'CI_REGISTRY') }}"
+gitlab_project_id: "43328313"
+gitlab_private_token: "{{ lookup('env', 'NECTAR_BACKUP_PAT') }}"
+branch_name: "test-case-data-{{ lookup('env', 'ENVIRONMENT') }}"
+nectar_csv_dir: "F:\\Nectar\\CXA\\liferay-ce-portal-{{ lookup('env', 'liferay_version') }}\\test-case-data"
+nectar_version: "{{ lookup('env', 'nectar_cx_version') }}"
+
