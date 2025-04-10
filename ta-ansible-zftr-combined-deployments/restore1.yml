@@ -1,0 +1,36 @@
+---
+- name: Ensure CSV directory exists on Windows
+  ansible.windows.win_file:
+    path: "{{ nectar_csv_dir }}"
+    state: directory
+  when: ansible_os_family == "Windows"
+
+- name: Fetch list of files from GitLab repository tree
+  ansible.builtin.uri:
+    url: "{{ gitlab_base_url }}/api/v4/projects/{{ gitlab_project_id }}/repository/tree?ref={{ branch_name }}&path=/"
+    method: GET
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_private_token }}"
+    return_content: yes
+    status_code: 200
+  register: gitlab_tree_response
+
+- name: Extract CSV files from GitLab tree response
+  ansible.builtin.set_fact:
+    csv_files: "{{ gitlab_tree_response.json | selectattr('type', 'equalto', 'blob') | selectattr('name', 'match', '.*\\.csv$') | list }}"
+
+- name: Download CSV files from GitLab to Nectar location
+  ansible.windows.win_get_url:
+    url: "{{ gitlab_base_url }}/api/v4/projects/{{ gitlab_project_id }}/repository/files/{{ item.path | urlencode }}/raw?ref={{ branch_name }}"
+    dest: "{{ nectar_csv_dir }}\\{{ item.name }}"
+    headers:
+      PRIVATE-TOKEN: "{{ gitlab_private_token }}"
+    force: yes  # Overwrite if file exists
+  loop: "{{ csv_files }}"
+  register: download_result
+
+- name: Display restored files
+  ansible.builtin.debug:
+    msg: "Restored {{ item.item.name }} to {{ nectar_csv_dir }}"
+  loop: "{{ download_result.results }}"
+  when: item.changed
