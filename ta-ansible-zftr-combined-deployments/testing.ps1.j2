@@ -1,0 +1,58 @@
+# roles/gitlab_csv_sync/tasks/restore.yml
+
+- name: Render PowerShell restore script
+  template:
+    src: restore.ps1.j2
+    dest: "{{ csv_dir }}\\restore_gitlab.ps1"
+
+- name: Execute PowerShell restore script
+  ansible.builtin.win_shell: |
+    powershell.exe -ExecutionPolicy Bypass -File "{{ csv_dir }}\\restore_gitlab.ps1"
+
+
+
+$ErrorActionPreference = "Stop"
+
+$apiUrl = "{{ gitlab_url }}/api/v4/projects/{{ gitlab_project_id }}/repository"
+$PrivateToken = "{{ backup_pat }}"
+$Branch = "test-case-data-{{ branch }}"
+$CsvDir = "{{ csv_dir }}"
+
+$headers = @{
+    "PRIVATE-TOKEN" = $PrivateToken
+    "Content-Type" = "application/json"
+}
+
+try {
+    Set-Location -Path $CsvDir
+
+    $treeUrl = "$apiUrl/tree?ref=$Branch&path=/"
+    $repoFiles = Invoke-RestMethod -Uri $treeUrl -Headers $headers -Method Get
+    $repoCsvFiles = $repoFiles | Where-Object { $_.type -eq "blob" -and $_.name -like "*.csv" }
+
+    if (-not $repoCsvFiles) {
+        Write-Host "No CSV files found in GitLab repository branch: $Branch"
+        exit 0
+    }
+
+    $localCsvFiles = Get-ChildItem -Path . -Filter "*.csv" | ForEach-Object { $_.Name }
+
+    foreach ($repoFile in $repoCsvFiles) {
+        $fileName = $repoFile.name
+        $encodedFilePath = [System.Uri]::EscapeDataString($fileName)
+        $fileUrl = "$apiUrl/files/$encodedFilePath/raw?ref=$Branch"
+        $fileContent = Invoke-RestMethod -Uri $fileUrl -Headers $headers -Method Get
+        [System.IO.File]::WriteAllText((Join-Path $CsvDir $fileName), $fileContent)
+    }
+
+    $filesToDelete = $localCsvFiles | Where-Object { $_ -notin $repoCsvFiles.name }
+    foreach ($file in $filesToDelete) {
+        Remove-Item -Path (Join-Path $CsvDir $file) -Force
+    }
+}
+catch {
+    Write-Error "Restore failed: $_"
+    exit 1
+}
+
+
