@@ -1,0 +1,28 @@
+---
+- name: Ensure test-case-data directory exists
+  win_file:
+    path: "F:\\Nectar\\CXA\\liferay-ce-portal-{{ liferay_version }}\\test-case-data"
+    state: directory
+
+- name: Restore test case CSV files from GitLab
+  win_shell: |
+    $headers = @{ "PRIVATE-TOKEN" = "{{ lookup('env', 'NECTAR_BACKUP_PAT') }}" }
+    $url = "https://gitlab.com/api/v4/projects/43328313/repository/tree?ref=test-case-data-{{ lookup('env', 'ENVIRONMENT') }}&path=/"
+
+    Write-Host "Fetching file list from $url"
+    $response = Invoke-RestMethod -Uri $url -Headers $headers
+    $csvFiles = $response | Where-Object { $_.type -eq 'blob' -and $_.name -like "*.csv" }
+
+    foreach ($file in $csvFiles) {
+        $encodedPath = [System.Uri]::EscapeDataString($file.path)
+        $rawUrl = "https://gitlab.com/api/v4/projects/43328313/repository/files/$encodedPath/raw?ref=test-case-data-{{ lookup('env', 'ENVIRONMENT') }}"
+        $destPath = "F:\\Nectar\\CXA\\liferay-ce-portal-{{ liferay_version }}\\test-case-data\\$($file.name)"
+
+        Write-Host "Downloading $($file.name) to $destPath"
+        Invoke-WebRequest -Uri $rawUrl -Headers $headers -OutFile $destPath
+    }
+  args:
+    executable: powershell
+
+- name: Confirm restore complete
+  win_command: dir "F:\\Nectar\\CXA\\liferay-ce-portal-{{ liferay_version }}\\test-case-data"
